@@ -48,12 +48,10 @@ namespace CommsLIB.Communications
 
         private EndPoint bindEP;
 
-
         private byte[] rxBuffer = new byte[65536];
 
         public UDPNETCommunicator(FrameWrapperBase<T> _frameWrapper = null) : base()
         {
-            //messageQueu = new BlockingQueue<byte[]>();
             frameWrapper = _frameWrapper != null ? _frameWrapper : null;
             remoteEPSource = (EndPoint)remoteIPEPSource;
         }
@@ -65,6 +63,8 @@ namespace CommsLIB.Communications
 
             MINIMUM_SEND_GAP = _sendGap;
             frameWrapper?.SetID(ID);
+
+            messageQueu = new BlockingQueue<byte[]>();
 
             CommsUri = uri;
             SetIPChunks(uri.IP);
@@ -80,14 +80,7 @@ namespace CommsLIB.Communications
                 bindEP = new IPEndPoint(IPAddress.Parse(uri.BindIP), udpEq.ConnUri.LocalPort);
 
             INACTIVITY_TIMER = inactivityMS;
-            if (INACTIVITY_TIMER > 0)
-            {
-                // Task Detect Inactive Clients
-                DetectInactivityTimer = new System.Timers.Timer(INACTIVITY_TIMER);
-                DetectInactivityTimer.AutoReset = true;
-                DetectInactivityTimer.Elapsed += OnInactivityTimer;
-                DetectInactivityTimer.Enabled = true;
-            }
+            
         }
 
         private void OnInactivityTimer(object sender, System.Timers.ElapsedEventArgs e)
@@ -183,7 +176,6 @@ namespace CommsLIB.Communications
             try
             {
                 nSent = t.Client.SendTo(data, offset, length, SocketFlags.None, remoteEP);
-                //logger.Trace($"UDP Sent: {nSent}");
                 LastTX = TimeTools.GetCoarseMillisNow();
             }
             catch (Exception e)
@@ -198,8 +190,6 @@ namespace CommsLIB.Communications
         {
             while (!exit)
             {
-                logger.Info("Loop");
-
                 if (udpEq.ClientImpl == null)
                 {
                     Thread.Sleep(CONNECTION_TIMEOUT);
@@ -290,10 +280,19 @@ namespace CommsLIB.Communications
         {
             logger.Info("Start");
             exit = false;
-            messageQueu = new BlockingQueue<byte[]>();
+            
 
             senderTask.Start();
             receiverTask.Start();
+
+            if (INACTIVITY_TIMER > 0)
+            {
+                // Task Detect Inactive Clients
+                DetectInactivityTimer = new System.Timers.Timer(INACTIVITY_TIMER);
+                DetectInactivityTimer.AutoReset = true;
+                DetectInactivityTimer.Elapsed += OnInactivityTimer;
+                DetectInactivityTimer.Enabled = true;
+            }
 
             State = STATE.RUNNING;
         }
@@ -303,19 +302,19 @@ namespace CommsLIB.Communications
             logger.Info("Stop");
             exit = true;
 
-            messageQueu.UnBlock();
-            //udpEq.ClientImpl.Close();
-            udpEq.ClientImpl.Dispose();
-
-            await Task.WhenAll(senderTask, receiverTask);
-            //Task.WaitAll(senderTask, receiverTask);
+            messageQueu.reset();
+            udpEq.ClientImpl?.Dispose();
 
             if (DetectInactivityTimer != null)
             {
                 DetectInactivityTimer.Elapsed -= OnInactivityTimer;
+                DetectInactivityTimer.Stop();
                 DetectInactivityTimer.Dispose();
                 DetectInactivityTimer = null;
             }
+
+            await senderTask;
+            await receiverTask;
 
             State = STATE.STOP;
         }
@@ -364,12 +363,14 @@ namespace CommsLIB.Communications
             }
         }
 
-        protected override void Dispose(bool disposing)
+        protected override async void Dispose(bool disposing)
         {
             if (!disposedValue)
             {
                 if (disposing)
                 {
+                    await stop();
+
                     messageQueu.Dispose();
                     udpEq.ClientImpl?.Dispose();
                 }

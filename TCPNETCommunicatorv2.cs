@@ -16,6 +16,7 @@ namespace CommsLIB.Communications
         #region logger
         private static NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
         #endregion
+
         private bool disposedValue = false;
         private int INACTIVITY_TIMER = 4000;
 
@@ -30,6 +31,7 @@ namespace CommsLIB.Communications
         private System.Timers.Timer DetectInactivityTimer;
 
         private Task senderTask;
+        private Task receiverTask;
         private volatile bool exit = false;
 
         private volatile CommEquipmentObject<TcpClient> tcpEq;
@@ -40,7 +42,6 @@ namespace CommsLIB.Communications
 
         public TCPNETCommunicatorv2(FrameWrapperBase<T> _frameWrapper = null) : base()
         {
-            messageCircularBuffer = new CircularBuffer4Comms(65536);
             frameWrapper = _frameWrapper != null ? _frameWrapper : null;
         }
 
@@ -49,7 +50,9 @@ namespace CommsLIB.Communications
             if (uri == null || !uri.IsValid)
                 return;
 
-            MINIMUM_SEND_GAP = _sendGap; 
+            messageCircularBuffer = new CircularBuffer4Comms(65536);
+
+            MINIMUM_SEND_GAP = _sendGap;
             frameWrapper?.SetID(ID);
 
             CommsUri = uri;
@@ -57,16 +60,9 @@ namespace CommsLIB.Communications
 
             tcpEq = new CommEquipmentObject<TcpClient>(ID, uri, null, persistent);
             senderTask = new Task(doSendStart, TaskCreationOptions.LongRunning);
+            receiverTask = new Task(Connect2EquipmentCallback, TaskCreationOptions.LongRunning);
 
             INACTIVITY_TIMER = inactivityMS;
-            if (INACTIVITY_TIMER > 0)
-            {
-                // Task Detect Inactive Clients
-                DetectInactivityTimer = new System.Timers.Timer(INACTIVITY_TIMER);
-                DetectInactivityTimer.AutoReset = true;
-                DetectInactivityTimer.Elapsed += OnInactivityTimer;
-                DetectInactivityTimer.Enabled = true;
-            }
         }
 
         private void OnInactivityTimer(object sender, System.Timers.ElapsedEventArgs e)
@@ -131,12 +127,19 @@ namespace CommsLIB.Communications
             while (!exit)
             {
 
-                length = messageCircularBuffer.take(txBuffer, 0);
+                try
+                {
+                    length = messageCircularBuffer.take(txBuffer, 0);
 
-                if ((toWait = TimeTools.GetCoarseMillisNow() - LastTX) < MINIMUM_SEND_GAP)
-                    Thread.Sleep((int)toWait);
+                    if ((toWait = TimeTools.GetCoarseMillisNow() - LastTX) < MINIMUM_SEND_GAP)
+                        Thread.Sleep((int)toWait);
 
-                Send2Equipment(txBuffer, 0, length, tcpEq);
+                    Send2Equipment(txBuffer, 0, length, tcpEq);
+                }
+                catch (Exception e)
+                {
+                    logger.Warn(e, "Exception in messageQueue");
+                }
             }
         }
 
@@ -218,25 +221,55 @@ namespace CommsLIB.Communications
 
         public override void start()
         {
-            senderTask.Start();
+            logger.Info("Start");
+            exit = false;
 
-            ThreadPool.QueueUserWorkItem(state => Connect2EquipmentCallback());
+            senderTask.Start();
+            receiverTask.Start();
+
+            if (INACTIVITY_TIMER > 0)
+            {
+                // Task Detect Inactive Clients
+                DetectInactivityTimer = new System.Timers.Timer(INACTIVITY_TIMER);
+                DetectInactivityTimer.AutoReset = true;
+                DetectInactivityTimer.Elapsed += OnInactivityTimer;
+                DetectInactivityTimer.Enabled = true;
+            }
 
             State = STATE.RUNNING;
         }
 
         public override async Task stop()
         {
+            logger.Info("Stop");
             exit = true;
+
+            messageCircularBuffer.reset();
+            tcpEq.ClientImpl?.Close();
+
+            if (DetectInactivityTimer != null)
+            {
+                DetectInactivityTimer.Elapsed -= OnInactivityTimer;
+                DetectInactivityTimer.Stop();
+                DetectInactivityTimer.Dispose();
+                DetectInactivityTimer = null;
+            }
+
+            await senderTask;
+            await receiverTask;
+
             State = STATE.STOP;
         }
 
-        protected override void Dispose(bool disposing)
+        protected override async void Dispose(bool disposing)
         {
             if (!disposedValue)
             {
                 if (disposing)
                 {
+                    await stop();
+
+                    messageCircularBuffer.Dispose();
                     tcpEq.ClientImpl?.Dispose();
                 }
 
@@ -244,7 +277,7 @@ namespace CommsLIB.Communications
                 // TODO: set large fields to null.
                 messageCircularBuffer = null;
                 tcpEq.ClientImpl = null;
-
+                DetectInactivityTimer = null;
                 disposedValue = true;
             }
 

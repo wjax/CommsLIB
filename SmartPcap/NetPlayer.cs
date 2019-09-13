@@ -68,6 +68,8 @@ namespace CommsLIB.SmartPcap
 
         public int LoadFile(string _filePath, out DateTime _startTime)
         {
+            Stop();
+
             filePath = _filePath;
             idxFilePath = Path.Combine(Path.GetDirectoryName(filePath),Path.GetFileNameWithoutExtension(filePath)) + ".idx";
 
@@ -92,7 +94,14 @@ namespace CommsLIB.SmartPcap
                         time = BitConverter.ToInt32(auxBuff, 0);
                         position = BitConverter.ToInt64(auxBuff, 4);
 
-                        timeIndexes.Add(time, position);
+                        try
+                        {
+                            timeIndexes.Add(time, position);
+                        }
+                        catch(Exception e)
+                        {
+
+                        }
                     }
                     lastTime = time;
                 }
@@ -139,9 +148,11 @@ namespace CommsLIB.SmartPcap
                 cancelSource = new CancellationTokenSource();
                 cancelToken = cancelSource.Token;
                 runningJob = new Task(() => RunReaderSenderProcessCallback(filePath, idxFilePath, cancelToken), cancelToken, TaskCreationOptions.LongRunning);
+                CurrentState = State.Playing;
+
                 runningJob.Start();
 
-                CurrentState = State.Playing;
+                
                 StatusEvent?.Invoke(CurrentState);
             }
         }
@@ -294,7 +305,7 @@ namespace CommsLIB.SmartPcap
 
         public void Stop()
         {
-            if (cancelToken.CanBeCanceled)
+            if (cancelToken != null && cancelToken.CanBeCanceled)
             {
                 cancelSource.Cancel();
                 runningJob.Wait();

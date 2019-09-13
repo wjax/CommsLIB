@@ -7,12 +7,13 @@ namespace CommsLIB.Base
     internal sealed class BlockingQueue<T> : IDisposable
     {
         private Queue<T> _queue = new Queue<T>();
-        private SemaphoreSlim _semaphore = new SemaphoreSlim(0, int.MaxValue);
-        private CancellationTokenSource cancelSource = new CancellationTokenSource();
+        private SemaphoreSlim _semaphore;
+        private CancellationTokenSource cancelSource;
         private CancellationToken cancelToken;
 
         public BlockingQueue()
         {
+            _semaphore = new SemaphoreSlim(0, int.MaxValue);
             cancelSource = new CancellationTokenSource();
             cancelToken = cancelSource.Token;
         }
@@ -20,22 +21,19 @@ namespace CommsLIB.Base
         public void Enqueue(T data)
         {
             if (data == null) throw new ArgumentNullException();
-            lock (_queue) _queue.Enqueue(data);
+            lock (this) _queue.Enqueue(data);
             _semaphore.Release();
         }
 
         public T Dequeue()
         {
             _semaphore.Wait(cancelToken);
-            lock (_queue) return _queue.Dequeue();
+            lock (this) return _queue.Dequeue();
         }
 
         public void Dispose()
         {
-            if (_semaphore != null && cancelToken.CanBeCanceled)
-            {
-                cancelSource.Cancel();
-            }
+            UnBlock();
 
             _semaphore?.Dispose();
             _semaphore = null;
@@ -44,7 +42,20 @@ namespace CommsLIB.Base
 
         }
 
-        public void UnBlock()
+        public void reset()
+        {
+            lock (this)
+            {
+                UnBlock();
+
+                _semaphore = new SemaphoreSlim(0, int.MaxValue);
+                cancelSource = new CancellationTokenSource();
+                cancelToken = cancelSource.Token;
+            }
+           
+        }
+
+        private void UnBlock()
         {
             if (_semaphore != null && cancelToken.CanBeCanceled)
             {

@@ -34,7 +34,7 @@ namespace CommsLIB.SmartPcap
 
         public delegate void StatusDelegate(State state);
         public event StatusDelegate StatusEvent;
-        public delegate void ProgressDelegate(float mb);
+        public delegate void ProgressDelegate(float mb, int secs);
         public event ProgressDelegate ProgressEvent;
 
         private List<UDPListener> udpListeners = new List<UDPListener>();
@@ -114,7 +114,7 @@ namespace CommsLIB.SmartPcap
                     idxFile.Write(idxBuffer, 0, HelperTools.idxDataSize);
 
                     // Launch event
-                    ProgressEvent?.Invoke((float)(file.Position / 1000000.0));
+                    ProgressEvent?.Invoke((float)(file.Position / 1000000.0), secTime);
 
                     lastIdxTime = secTime;
                 }
@@ -190,17 +190,19 @@ namespace CommsLIB.SmartPcap
 
             Task.WaitAll(tasks.ToArray());
 
-            foreach (var u in udpListeners)
-                u.Dispose();
+            //foreach (var u in udpListeners)
+            //    u.Dispose();
 
             file.Close();
             file.Dispose();
             idxFile.Close();
             idxFile.Dispose();
 
-            udpListeners.Clear();
+            //udpListeners.Clear();
 
             CurrentState = State.Stoped;
+            timeOffset = long.MinValue;
+
             StatusEvent?.Invoke(CurrentState);
         }
 

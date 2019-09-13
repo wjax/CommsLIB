@@ -4,7 +4,7 @@ using System.Threading;
 
 namespace CommsLIB.Base
 {
-    internal sealed class CircularBuffer4Comms
+    internal sealed class CircularBuffer4Comms : IDisposable
     {
         #region logger
         private static NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
@@ -18,6 +18,9 @@ namespace CommsLIB.Base
         public volatile int readPos = 0;
         public volatile bool flipped = false;
 
+        private CancellationTokenSource cancelSource;
+        private CancellationToken cancelToken;
+
         private SemaphoreSlim _semaphore;
 
         public CircularBuffer4Comms(int capacity)
@@ -25,14 +28,26 @@ namespace CommsLIB.Base
             this.capacity = capacity;
             this.elements = new byte[capacity];
             this. _semaphore = new SemaphoreSlim(0, int.MaxValue);
+
+            cancelSource = new CancellationTokenSource();
+            cancelToken = cancelSource.Token;
         }
 
         public void reset()
         {
-            this.writePos = 0;
-            this.readPos = 0;
-            this.flipped = false;
-            this._semaphore = new SemaphoreSlim(0, int.MaxValue);
+            lock (this)
+            {
+                UnBlock();
+
+                this.writePos = 0;
+                this.readPos = 0;
+                this.flipped = false;
+                this._semaphore = new SemaphoreSlim(0, int.MaxValue);
+
+                cancelSource = new CancellationTokenSource();
+                cancelToken = cancelSource.Token;
+            }
+            
         }
 
         private int available()
@@ -173,8 +188,8 @@ namespace CommsLIB.Base
         public byte take()
         {
             byte result = 0;
-            _semaphore.Wait();
-            
+            _semaphore.Wait(cancelToken);
+
             lock (this)
             {
                 //logger.Trace("Take. remCap = " + remainingCapacity());
@@ -240,7 +255,7 @@ namespace CommsLIB.Base
 
         public int take(byte[] into, int offset)
         {
-            _semaphore.Wait();
+            _semaphore.Wait(cancelToken);
 
             int frameSize = 0;
             int frameSizePos = 0;
@@ -314,6 +329,26 @@ namespace CommsLIB.Base
 
 
             return intoWritePos - offset;
+        }
+
+        public void Dispose()
+        {
+            if (_semaphore != null && cancelToken.CanBeCanceled)
+            {
+                cancelSource.Cancel();
+            }
+
+            _semaphore?.Dispose();
+            _semaphore = null;
+
+        }
+
+        private void UnBlock()
+        {
+            if (_semaphore != null && cancelToken.CanBeCanceled)
+            {
+                cancelSource.Cancel();
+            }
         }
     }
 }

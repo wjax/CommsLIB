@@ -33,6 +33,7 @@ namespace CommsLIB.Communications
         private System.Timers.Timer DetectInactivityTimer;
 
         private Task senderTask;
+        private Task receiverTask;
         private volatile bool exit = false;
 
         private volatile CommEquipmentObject<UdpClient> udpEq;
@@ -52,7 +53,6 @@ namespace CommsLIB.Communications
 
         public UDPNETCommunicatorv2(FrameWrapperBase<T> _frameWrapper = null) : base()
         {
-            messageCircularBuffer = new CircularBuffer4Comms(65536);
             frameWrapper = _frameWrapper != null ? _frameWrapper : null;
             remoteEPSource = (EndPoint)remoteIPEPSource;
         }
@@ -62,6 +62,8 @@ namespace CommsLIB.Communications
             if (uri == null || !uri.IsValid)
                 return;
 
+            messageCircularBuffer = new CircularBuffer4Comms(65536);
+
             MINIMUM_SEND_GAP = _sendGap;
             frameWrapper?.SetID(ID);
 
@@ -70,6 +72,7 @@ namespace CommsLIB.Communications
 
             udpEq = new CommEquipmentObject<UdpClient>(ID, uri, null, persistent);
             senderTask = new Task(doSendStart, TaskCreationOptions.LongRunning);
+            receiverTask = new Task(Connect2EquipmentCallback, TaskCreationOptions.LongRunning);
 
             remoteEP = new IPEndPoint(IPAddress.Parse(uri.IP), uri.Port);
             if (string.IsNullOrEmpty(uri.BindIP))
@@ -78,14 +81,7 @@ namespace CommsLIB.Communications
                 bindEP = new IPEndPoint(IPAddress.Parse(uri.BindIP), udpEq.ConnUri.LocalPort);
 
             INACTIVITY_TIMER = inactivityMS;
-            if (INACTIVITY_TIMER > 0)
-            {
-                // Task Detect Inactive Clients
-                DetectInactivityTimer = new System.Timers.Timer(INACTIVITY_TIMER);
-                DetectInactivityTimer.AutoReset = true;
-                DetectInactivityTimer.Elapsed += OnInactivityTimer;
-                DetectInactivityTimer.Enabled = true;
-            }
+            
         }
 
         private void OnInactivityTimer(object sender, System.Timers.ElapsedEventArgs e)
@@ -154,13 +150,20 @@ namespace CommsLIB.Communications
 
             while (!exit)
             {
+                try
+                {
+                    length = messageCircularBuffer.take(txBuffer, 0);
 
-                length = messageCircularBuffer.take(txBuffer, 0);
+                    if ((toWait = TimeTools.GetCoarseMillisNow() - LastTX) < MINIMUM_SEND_GAP)
+                        Thread.Sleep((int)toWait);
 
-                if ((toWait = TimeTools.GetCoarseMillisNow() - LastTX) < MINIMUM_SEND_GAP)
-                    Thread.Sleep((int)toWait);
-
-                Send2Equipment(txBuffer, 0, length, udpEq);
+                    Send2Equipment(txBuffer, 0, length, udpEq);
+                }
+                catch (Exception e)
+                {
+                    logger.Warn(e, "Exception in messageQueue");
+                }
+                
             }
         }
 
@@ -276,16 +279,43 @@ namespace CommsLIB.Communications
 
         public override void start()
         {
-            senderTask.Start();
+            logger.Info("Start");
+            exit = false;
 
-            ThreadPool.QueueUserWorkItem(state => Connect2EquipmentCallback());
+            senderTask.Start();
+            receiverTask.Start();
+
+            if (INACTIVITY_TIMER > 0)
+            {
+                // Task Detect Inactive Clients
+                DetectInactivityTimer = new System.Timers.Timer(INACTIVITY_TIMER);
+                DetectInactivityTimer.AutoReset = true;
+                DetectInactivityTimer.Elapsed += OnInactivityTimer;
+                DetectInactivityTimer.Enabled = true;
+            }
 
             State = STATE.RUNNING;
         }
 
         public override async Task stop()
         {
+            logger.Info("Stop");
             exit = true;
+
+            messageCircularBuffer.reset();
+            udpEq.ClientImpl?.Dispose();
+
+            if (DetectInactivityTimer != null)
+            {
+                DetectInactivityTimer.Elapsed -= OnInactivityTimer;
+                DetectInactivityTimer.Stop();
+                DetectInactivityTimer.Dispose();
+                DetectInactivityTimer = null;
+            }
+
+            await senderTask;
+            await receiverTask;
+
             State = STATE.STOP;
         }
 
@@ -333,12 +363,15 @@ namespace CommsLIB.Communications
             }
         }
 
-        protected override void Dispose(bool disposing)
+        protected override async void Dispose(bool disposing)
         {
             if (!disposedValue)
             {
                 if (disposing)
                 {
+                    await stop();
+
+                    messageCircularBuffer.Dispose();
                     udpEq.ClientImpl?.Dispose();
                 }
 
