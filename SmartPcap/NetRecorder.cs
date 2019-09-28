@@ -25,10 +25,11 @@ namespace CommsLIB.SmartPcap
         private byte[] headerBuffer;
 
         private long timeOffset = long.MinValue;
-        private long lastTimeIdx = long.MinValue;
+        //private long lastTimeIdx = long.MinValue;
 
         long correctedTime = 0;
         int lastIdxTime = -1;
+        int secTime;
 
         private int secsIdxInterval;
 
@@ -45,8 +46,8 @@ namespace CommsLIB.SmartPcap
 
         public NetRecorder()
         {
-            idxBuffer = HelperTools.RentBuffer(HelperTools.idxDataSize);
-            headerBuffer = HelperTools.RentBuffer(HelperTools.headerSize);
+            idxBuffer = new byte[HelperTools.idxDataSize];
+            headerBuffer = new byte[HelperTools.headerSize];
         }
 
         public void AddPeer(string ID, string ip, int port, string netcard = "")
@@ -90,34 +91,32 @@ namespace CommsLIB.SmartPcap
             if (timeOffset == long.MinValue)
             {
                 timeOffset = time;
-                correctedTime = 0;
                 // Write idx Header
                 HelperTools.Long2Bytes(idxBuffer, 0, HelperTools.millisFromEpochNow());
                 HelperTools.Int32Bytes(idxBuffer, 8, secsIdxInterval);
                 idxFile.Write(idxBuffer, 0, 12);
+                idxFile.Flush();
             }
-            else
-                correctedTime = time - timeOffset;
+
+            correctedTime = time - timeOffset;
 
             // Time in seconds
-            int secTime = (int)(correctedTime / 1000000);
+            secTime = (int)(correctedTime / 1000000);
 
             // 1sec
-            if (secTime % secsIdxInterval == 0)
+            if (lastIdxTime != secTime && secTime % secsIdxInterval == 0)
             {
-                if (lastIdxTime != secTime)
-                {
-                    // Write index
-                    HelperTools.Int32Bytes(idxBuffer, 0, secTime);
-                    HelperTools.Long2Bytes(idxBuffer, 4, file.Position);
+                // Write index
+                HelperTools.Int32Bytes(idxBuffer, 0, secTime);
+                HelperTools.Long2Bytes(idxBuffer, 4, file.Position);
 
-                    idxFile.Write(idxBuffer, 0, HelperTools.idxDataSize);
+                idxFile.Write(idxBuffer, 0, HelperTools.idxDataSize);
+                idxFile.Flush();
 
-                    // Launch event
-                    ProgressEvent?.Invoke((float)(file.Position / 1000000.0), secTime);
+                // Launch event async
+                Task.Run(() => ProgressEvent?.Invoke((float)(file.Position / 1000000.0), secTime));
 
-                    lastIdxTime = secTime;
-                }
+                lastIdxTime = secTime;
             }
 
             // Fill header
@@ -168,12 +167,12 @@ namespace CommsLIB.SmartPcap
                 File.Delete(idxFilePath);
 
             secsIdxInterval = _secsIdxInterval;
+            lastIdxTime = -1;
+            timeOffset = long.MinValue;
 
             // Open file
-            file = new FileStream(filePath, FileMode.Create, FileAccess.Write);
+            file = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None,65536);
             idxFile = new FileStream(idxFilePath, FileMode.Create, FileAccess.Write);
-
-            lastIdxTime = -1;
 
             foreach (var u in udpListeners)
                 u.Start();
@@ -201,14 +200,11 @@ namespace CommsLIB.SmartPcap
             //udpListeners.Clear();
 
             CurrentState = State.Stoped;
-            timeOffset = long.MinValue;
-
             StatusEvent?.Invoke(CurrentState);
         }
 
         public void Dispose()
         {
-            HelperTools.ReturnBuffer(idxBuffer);
         }
     }
 }

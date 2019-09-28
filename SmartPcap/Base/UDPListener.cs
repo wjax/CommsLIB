@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -56,15 +57,17 @@ namespace CommsLIB.SmartPcap.Base
 
             //socket.ExclusiveAddressUse = false;
 
-            if (string.IsNullOrEmpty(netcard))
-                socket.Bind(new IPEndPoint(IPAddress.Any, networkPort));
-            else
-                socket.Bind(new IPEndPoint(IPAddress.Parse(netcard), networkPort));
+            //if (string.IsNullOrEmpty(netcard))
+            //    socket.Bind(new IPEndPoint(IPAddress.Any, networkPort));
+            //else
+            //    socket.Bind(new IPEndPoint(IPAddress.Parse(netcard), networkPort));
 
-            if (isMulticast)
-                socket.SetSocketOption(SocketOptionLevel.IP,
-                                SocketOptionName.AddMembership,
-                                new MulticastOption(IPAddress.Parse(networkIp), IPAddress.Any));
+            //if (isMulticast)
+            //    socket.SetSocketOption(SocketOptionLevel.IP,
+            //                    SocketOptionName.AddMembership,
+            //                    new MulticastOption(IPAddress.Parse(networkIp), IPAddress.Any));
+
+            JoinMulticastOnSteroids(socket, networkIp);
 
 
             cancelSource = new CancellationTokenSource();
@@ -112,6 +115,26 @@ namespace CommsLIB.SmartPcap.Base
                 }
             }
             HelperTools.ReturnBuffer(buffer);
+        }
+
+        private void JoinMulticastOnSteroids(Socket s, string multicastIP)
+        {
+            NetworkInterface[] nics = NetworkInterface.GetAllNetworkInterfaces();
+            foreach (NetworkInterface adapter in nics)
+            {
+                IPInterfaceProperties ip_properties = adapter.GetIPProperties();
+
+                foreach (UnicastIPAddressInformation ip in adapter.GetIPProperties().UnicastAddresses)
+                {
+                    try
+                    {
+                        if (ip.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                            s.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, new MulticastOption(System.Net.IPAddress.Parse(multicastIP), ip.Address));
+                    }
+                    catch (Exception) { }
+                }
+                //}
+            }
         }
 
         public void Dispose()
