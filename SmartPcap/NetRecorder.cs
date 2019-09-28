@@ -60,12 +60,12 @@ namespace CommsLIB.SmartPcap
             }
         }
 
-        public void AddPeer(CommunicatorBase commLink)
+        public void AddPeer<T>(CommunicatorBase<T> commLink)
         {
             commLink.DataReadyEvent += DataReadyEventCallback;
         }
 
-        public void RemovePeer(CommunicatorBase commLink)
+        public void RemovePeer<T>(CommunicatorBase<T> commLink)
         {
             try
             {

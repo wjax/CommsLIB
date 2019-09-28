@@ -7,9 +7,9 @@ namespace CommsLIB.Communications
 {
     public static class CommunicatorFactory
     {
-        public static CommunicatorBase CreateCommunicator<T>(ConnUri uri, FrameWrapperBase<T> frameWrapper, bool circular = false)
+        public static CommunicatorBase<T> CreateCommunicator<T>(ConnUri uri, FrameWrapperBase<T> frameWrapper, bool circular = false)
         {
-            CommunicatorBase c = null ;
+            CommunicatorBase<T> c = null ;
             switch (uri.UriType)
             {
                 case ConnUri.TYPE.TCP:
@@ -34,13 +34,15 @@ namespace CommsLIB.Communications
         }
     }
 
-    public abstract class CommunicatorBase : IDisposable
+    public abstract class CommunicatorBase<T> : IDisposable
     {
         public event DataReadyEventHandler DataReadyEvent;
         public delegate void DataReadyEventHandler(string ip, int port, long time, byte[] bytes, int offset, int length , string ID, ushort[] ipChunks);
 
         public delegate void ConnectionStateDelegate(string ID, ConnUri uri, bool connected);
         public event ConnectionStateDelegate ConnectionStateEvent;
+
+        //private FrameWrapperBase<T> frameWrapper;
 
         public enum STATE
         {
@@ -52,11 +54,17 @@ namespace CommsLIB.Communications
         public ConnUri CommsUri;
         public ushort[] ipChunks = new ushort[4];
 
+        //public virtual FrameWrapperBase<T> GetFrameWrapper()
+        //{
+        //    return frameWrapper;
+        //}
+
         public abstract void init(ConnUri uri, bool persistent, string ID, int inactivityMS, int sendGAP = 0);
         public abstract void start();
         public abstract Task stop();
         public abstract void sendASync(byte[] bytes, int length);
         public abstract void sendSync(byte[] bytes, int offset, int length);
+        public abstract void sendSync(T protoBufMessage);
         public virtual void FireDataEvent(string ip, int port, long time, byte[] bytes, int offset, int length, string ID, ushort[] ipChunks = null)
         {
             DataReadyEvent?.Invoke(ip, port, time, bytes, offset, length, ID, ipChunks);

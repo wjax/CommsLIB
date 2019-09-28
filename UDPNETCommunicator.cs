@@ -12,7 +12,7 @@ using System.Threading.Tasks;
 
 namespace CommsLIB.Communications
 {
-    public class UDPNETCommunicator<T> : CommunicatorBase
+    public class UDPNETCommunicator<T> : CommunicatorBase<T>
     {
         #region logger
         private static NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
@@ -384,6 +384,11 @@ namespace CommsLIB.Communications
             }
 
             base.Dispose(disposing);
+        }
+
+        public override void sendSync(T Message)
+        {
+            throw new NotImplementedException();
         }
     }
 

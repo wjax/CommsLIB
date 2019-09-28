@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace CommsLIB.Communications
 {
-    public class SERIALCommunicator<T> : CommunicatorBase
+    public class SERIALCommunicator<T> : CommunicatorBase<T>
     {
         private int INACTIVITY_TIMER = 4000;
 
@@ -209,6 +209,11 @@ namespace CommsLIB.Communications
         }
 
         protected override void Dispose(bool disposing)
+        {
+            throw new NotImplementedException();
+        }
+
+        public override void sendSync(T Message)
         {
             throw new NotImplementedException();
         }

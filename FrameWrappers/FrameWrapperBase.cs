@@ -1,4 +1,5 @@
 ﻿using CommsLIB.Base;
+using System;
 using System.Threading.Tasks;
 
 namespace CommsLIB.Communications.FrameWrappers
@@ -61,6 +62,11 @@ namespace CommsLIB.Communications.FrameWrappers
             if (FrameAvailableEvent != null)
                 foreach (var d in FrameAvailableEvent.GetInvocationList())
                     FrameAvailableEvent -= (d as FrameAvailableDelegate);
+        }
+
+        public virtual byte[] Data2BytesSync(T data, out int count)
+        {
+            throw new NotImplementedException();
         }
     }
 }
