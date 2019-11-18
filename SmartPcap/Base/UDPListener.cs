@@ -52,23 +52,16 @@ namespace CommsLIB.SmartPcap.Base
             socket.SetSocketOption(SocketOptionLevel.Socket,
                                 SocketOptionName.ReuseAddress, true);
 
-            socket.ReceiveBufferSize = 100 * 1024;
+            socket.ReceiveBufferSize = 65535;
             socket.SendBufferSize = 65535; // default is 8192. Make it as large as possible for large RTP packets which are not fragmented
 
-            //socket.ExclusiveAddressUse = false;
+            if (string.IsNullOrEmpty(netcard))
+                socket.Bind(new IPEndPoint(IPAddress.Any, networkPort));
+            else
+                socket.Bind(new IPEndPoint(IPAddress.Parse(netcard), networkPort));
 
-            //if (string.IsNullOrEmpty(netcard))
-            //    socket.Bind(new IPEndPoint(IPAddress.Any, networkPort));
-            //else
-            //    socket.Bind(new IPEndPoint(IPAddress.Parse(netcard), networkPort));
-
-            //if (isMulticast)
-            //    socket.SetSocketOption(SocketOptionLevel.IP,
-            //                    SocketOptionName.AddMembership,
-            //                    new MulticastOption(IPAddress.Parse(networkIp), IPAddress.Any));
-
-            JoinMulticastOnSteroids(socket, networkIp);
-
+            if (isMulticast)
+                JoinMulticastOnSteroids(socket, networkIp);
 
             cancelSource = new CancellationTokenSource();
             cancelToken = cancelSource.Token;
@@ -94,7 +87,7 @@ namespace CommsLIB.SmartPcap.Base
         {
             buffer = HelperTools.RentBuffer(HelperTools.SIZE_BYTES);
             Socket socket = (Socket)state;
-            EndPoint e = new IPEndPoint(IPAddress.Any, networkPort);
+            //EndPoint e = new IPEndPoint(IPAddress.Any, networkPort);
             long time;
             int n_bytes;
             while (!cancelToken.IsCancellationRequested)

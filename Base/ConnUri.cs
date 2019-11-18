@@ -1,7 +1,7 @@
 ﻿namespace CommsLIB.Base
 {
     // tcp://IP:PORT
-    // udp://IP:PORT:LOCAL_PORT
+    // udp://IP:PORT:BIND_IP:BIND_PORT
     // udp://:PORT:LOCAL_PORT
     // serial://com1:9600
     // sdp://yua_Live.sdp::50100

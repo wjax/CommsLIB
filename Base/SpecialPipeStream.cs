@@ -7,11 +7,11 @@ namespace CommsLIB.Base
 {
     public class SpecialPipeStream : Stream, IDisposable
     {
-        CircularBuffer internalBuffer;
+        CircularByteBuffer internalBuffer;
 
         public SpecialPipeStream(int capacity, bool blocking)
         {
-            internalBuffer = new CircularBuffer(capacity, blocking);
+            internalBuffer = new CircularByteBuffer(capacity, blocking);
 
         }
 

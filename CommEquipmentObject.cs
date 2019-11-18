@@ -1,4 +1,5 @@
 ﻿using CommsLIB.Base;
+using CommsLIB.Helper;
 using System;
 
 
@@ -19,15 +20,10 @@ namespace CommsLIB.Communications
             this.ID = ID;
             this.ConnUri = uri;
             this.ClientImpl = _ClientImpl;
-            this.timeLastIncoming = DateTime.Now.ToFileTimeUtc();
+            this.timeLastIncoming = TimeTools.GetCoarseMillisNow();
             this.persitentConnection = _persistent;
         }
 
-        public bool IsPersistent()
-        {
-            return persitentConnection;
-        }
-
-
+        public bool IsPersistent { get => persitentConnection; }
     }
 }

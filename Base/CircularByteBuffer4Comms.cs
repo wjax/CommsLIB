@@ -4,7 +4,7 @@ using System.Threading;
 
 namespace CommsLIB.Base
 {
-    internal sealed class CircularBuffer4Comms : IDisposable
+    internal sealed class CircularByteBuffer4Comms : IDisposable, ICommsQueue
     {
         #region logger
         private static NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
@@ -23,7 +23,7 @@ namespace CommsLIB.Base
 
         private SemaphoreSlim _semaphore;
 
-        public CircularBuffer4Comms(int capacity)
+        public CircularByteBuffer4Comms(int capacity)
         {
             this.capacity = capacity;
             this.elements = new byte[capacity];
@@ -33,7 +33,7 @@ namespace CommsLIB.Base
             cancelToken = cancelSource.Token;
         }
 
-        public void reset()
+        public void Reset()
         {
             lock (this)
             {
@@ -50,7 +50,7 @@ namespace CommsLIB.Base
             
         }
 
-        private int available()
+        private int Available()
         {
             if (!flipped)
             {
@@ -59,7 +59,7 @@ namespace CommsLIB.Base
             return capacity - readPos + writePos;
         }
 
-        public int remainingCapacity()
+        public int RemainingCapacity()
         {
             if (!flipped)
             {
@@ -116,7 +116,7 @@ namespace CommsLIB.Base
         //    return result;
         //}
 
-        public int put(byte[] newElements, int length)
+        public int Put(byte[] newElements, int length)
         {
             int newElementsReadPos = 0;
             int sizeReadPos = 0;
@@ -125,6 +125,9 @@ namespace CommsLIB.Base
 
             lock (this)
             {
+                if (RemainingCapacity() < length)
+                    return 0;
+
                 //logger.Trace("Put. remCap = " + remainingCapacity());
                 if (!flipped)
                 {
@@ -185,7 +188,7 @@ namespace CommsLIB.Base
         }
 
 
-        public byte take()
+        public byte Take()
         {
             byte result = 0;
             _semaphore.Wait(cancelToken);
@@ -221,7 +224,7 @@ namespace CommsLIB.Base
             return result;
         }
 
-        private byte takeNonLock()
+        private byte TakeNonLock()
         {
             byte result = 0;
 
@@ -253,7 +256,7 @@ namespace CommsLIB.Base
             return result;
         }
 
-        public int take(byte[] into, int offset)
+        public int Take(ref byte[] into, int offset)
         {
             _semaphore.Wait(cancelToken);
 
@@ -292,7 +295,7 @@ namespace CommsLIB.Base
                     // Get 4 bytes for the length of this frame
                     for (; frameSizePos < SIZE; frameSizePos++)
                     {
-                        frameSize |= takeNonLock() << 8 * frameSizePos;
+                        frameSize |= TakeNonLock() << 8 * frameSizePos;
                     }
 
                     if (frameSize <= capacity - readPos)

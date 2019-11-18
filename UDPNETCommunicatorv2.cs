@@ -28,7 +28,7 @@ namespace CommsLIB.Communications
         private int MINIMUM_SEND_GAP = 0;
         private long LastTX = 0;
 
-        private CircularBuffer4Comms messageCircularBuffer;
+        private CircularByteBuffer4Comms messageCircularBuffer;
 
         private System.Timers.Timer DetectInactivityTimer;
 
@@ -62,7 +62,7 @@ namespace CommsLIB.Communications
             if (uri == null || !uri.IsValid)
                 return;
 
-            messageCircularBuffer = new CircularBuffer4Comms(65536);
+            messageCircularBuffer = new CircularByteBuffer4Comms(65536);
 
             MINIMUM_SEND_GAP = _sendGap;
             frameWrapper?.SetID(ID);
@@ -389,6 +389,11 @@ namespace CommsLIB.Communications
         public override void sendSync(T Message)
         {
             throw new NotImplementedException();
+        }
+
+        public override string getID()
+        {
+            return udpEq.ID;
         }
     }
 

@@ -56,9 +56,9 @@ namespace ConfTestClient.Comms
             UseCircularBuffers = _useCircularBuffers;
         }
 
-        public void start()
+        public void Start()
         {
-            stop();
+            Stop();
 
             server = new TcpListener(IPAddress.Any, ListeningPort);
             server.Start();
@@ -69,7 +69,7 @@ namespace ConfTestClient.Comms
             listenTask.Start();
         }
 
-        public void stop()
+        public void Stop()
         {
             if (cancelListenToken.CanBeCanceled)
             {
@@ -78,11 +78,6 @@ namespace ConfTestClient.Comms
                 server = null;
                 listenTask.Wait();
             }
-        }
-
-        public void Dispose()
-        {
-            
         }
 
         private static string GetIDFromSocket(Socket s)
@@ -105,11 +100,7 @@ namespace ConfTestClient.Comms
                 // Create Framewrapper
                 var framewrapper = new T();
                 // Create TCPNetCommunicator
-                CommunicatorBase<U> communicator;
-                if (UseCircularBuffers)
-                    communicator = new TCPNETCommunicatorv2<U>(tcpClient, framewrapper);
-                else
-                    communicator = new TCPNETCommunicator<U>(tcpClient, framewrapper);
+                CommunicatorBase<U> communicator = new TCPNETCommunicator<U>(tcpClient, framewrapper, UseCircularBuffers);
 
                 // Add to dict 
                 lock (lockerClientList)
@@ -120,11 +111,9 @@ namespace ConfTestClient.Comms
                 communicator.DataReadyEvent += OnCommunicatorData;
                 framewrapper.FrameAvailableEvent += OnFrameReady;
 
-                communicator.init(null, false, id, 0);
+                communicator.Init(null, false, id, 0);
                 framewrapper.Start();
-                communicator.start();
-
-
+                communicator.Start();
             }
         }
 
@@ -152,51 +141,62 @@ namespace ConfTestClient.Comms
                     var communicator = ClientList[ID];
                     communicator.Dispose();
                     ClientList.Remove(ID);
-                }
-                    
+                }    
         }
 
         public void Send2All(U data)
         {
-            //string[] keys = null;
-
-            //lock (lockerClientList)
-            //{
-            //    keys = new string[ClientList.Keys.Count];
-            //    ClientList.Keys.CopyTo(keys, 0);
-            //}
-
-            //for (int i = keys.Length - 1; i >= 0; i--)
-            //{
-            //    //byte[] buffer = (ClientList[keys[i]] as IHasFrameWrapper<U>).GetFrameWrapper().Data2BytesSync(data, out int count);
-            //    ClientList[keys[i]]?.sendSync(data);
-            //}
             lock (lockerClientList)
             {
                 foreach (KeyValuePair<string, CommunicatorBase<U>> kv in ClientList)
-                    kv.Value.sendSync(data);
+                    kv.Value.SendSync(data);
             }
         }
 
         public void Send2All(byte[] buff, int size)
         {
-            //string[] keys = null;
-
-            //lock (lockerClientList)
-            //{
-            //    keys = new string[ClientList.Keys.Count];
-            //    ClientList.Keys.CopyTo(keys,0);
-            //}
-
-            //for (int i= keys.Length-1; i>=0;i--)
-            //{
-            //   ClientList[keys[i]].sendASync(buff, size);
-            //}
             lock (lockerClientList)
             {
                 foreach (KeyValuePair<string, CommunicatorBase<U>> kv in ClientList)
-                    kv.Value.sendASync(buff, size);
+                    kv.Value.SendASync(buff, size);
             }
         }
+
+        #region IDisposable Support
+        private bool disposedValue = false; // To detect redundant calls
+
+        // TODO
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposedValue)
+            {
+                if (disposing)
+                {
+                    // TODO: dispose managed state (managed objects).
+                }
+
+                // TODO: free unmanaged resources (unmanaged objects) and override a finalizer below.
+                // TODO: set large fields to null.
+
+                disposedValue = true;
+            }
+        }
+
+        // TODO: override a finalizer only if Dispose(bool disposing) above has code to free unmanaged resources.
+        // ~TCPSmartServer()
+        // {
+        //   // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+        //   Dispose(false);
+        // }
+
+        // This code added to correctly implement the disposable pattern.
+        public void Dispose()
+        {
+            // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+            Dispose(true);
+            // TODO: uncomment the following line if the finalizer is overridden above.
+            // GC.SuppressFinalize(this);
+        }
+        #endregion
     }
 }

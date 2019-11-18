@@ -12,7 +12,7 @@ namespace CommsLIB.Communications.FrameWrappers
         private Task parseDataTask;
         private bool exit = false;
 
-        private CircularBuffer circularBuffer;
+        private CircularByteBuffer circularBuffer;
 
         public AsyncFrameWrapper(int _circularBufferCapacity, bool _useThreadPool4Event) 
             :base(_useThreadPool4Event)
