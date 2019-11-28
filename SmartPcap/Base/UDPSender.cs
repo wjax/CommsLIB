@@ -1,12 +1,16 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 
 namespace CommsLIB.SmartPcap.Base
 {
-    public class UDPSender
+    public class UDPSender : IDisposable
     {
         private Socket socket;
+
+        public delegate void DataRateDelegate(string ID, float MbpsTX);
+        public event DataRateDelegate DataRateEvent;
 
         private string networkIp = "225.25.1.10";
         private int networkPort = 1234;
@@ -14,34 +18,54 @@ namespace CommsLIB.SmartPcap.Base
         private string netcard = "";
         int ttl = 0;
         int portOffset;
+        string ID;
 
         private EndPoint peer;
 
-        public UDPSender(string _ip, int _port, string _netcard = "")
+        private Timer dataRateTimer;
+        private int bytesAccumulatorTX = 0;
+
+        public UDPSender(string _id, string _ip, int _port, bool onlyLocal, string _netcard = "")
         {
+            ID = _id;
             networkIp = _ip;
             networkPort = _port;
             isMulticast = HelperTools.IsMulticast(_ip, out IPAddress ipAdrr);
             netcard = _netcard;
-        }
-
-        public UDPSender(ulong _ipport, bool onlyLocal, string _netcard = "")
-        {
-            int[] ip =
-            {
-                (byte)(_ipport),(byte)(_ipport >> 8), (byte)(_ipport >> 16), (byte)(_ipport >> 24)
-            };
 
             if (onlyLocal)
                 ttl = 0;
             else
-                ttl = 25;
+                ttl = 255;
 
-            netcard = _netcard;
-            networkIp = String.Format("{0}.{1}.{2}.{3}", ip[0], ip[1], ip[2], ip[3]);
-            networkPort = (byte)(_ipport >> 32) | ((byte)(_ipport >> 40) << 8) | ((byte)(_ipport >> 48) << 16) | ((byte)(_ipport >> 56) << 24);
+            dataRateTimer = new Timer(OnDataRate, null, 1000, 1000);
+        }
 
-            isMulticast = HelperTools.IsMulticast(networkIp, out IPAddress ipAdrr);
+        //public UDPSender(ulong _ipport, bool onlyLocal, string _netcard = "")
+        //{
+        //    int[] ip =
+        //    {
+        //        (byte)(_ipport),(byte)(_ipport >> 8), (byte)(_ipport >> 16), (byte)(_ipport >> 24)
+        //    };
+
+        //    if (onlyLocal)
+        //        ttl = 0;
+        //    else
+        //        ttl = 25;
+
+        //    netcard = _netcard;
+        //    networkIp = String.Format("{0}.{1}.{2}.{3}", ip[0], ip[1], ip[2], ip[3]);
+        //    networkPort = (byte)(_ipport >> 32) | ((byte)(_ipport >> 40) << 8) | ((byte)(_ipport >> 48) << 16) | ((byte)(_ipport >> 56) << 24);
+
+        //    isMulticast = HelperTools.IsMulticast(networkIp, out IPAddress ipAdrr);
+        //}
+
+        private void OnDataRate(object state)
+        {
+            float dataRateMpbsTX = (bytesAccumulatorTX * 8f) / 1048576; // Mpbs
+            bytesAccumulatorTX = 0;
+
+            DataRateEvent?.Invoke(ID, dataRateMpbsTX);
         }
 
         public void Start()
@@ -71,9 +95,19 @@ namespace CommsLIB.SmartPcap.Base
             peer = new IPEndPoint(IPAddress.Parse(networkIp), networkPort);
         }
 
-        public void Send(byte[] buffer, int offset, int count)
+        public bool Send(byte[] buffer, int offset, int count)
         {
-            socket?.SendTo(buffer, offset, count, SocketFlags.None, peer);
+            try
+            {
+                int nBytes = socket.SendTo(buffer, offset, count, SocketFlags.None, peer);
+                bytesAccumulatorTX += nBytes;
+
+                return true;
+
+            } catch(SocketException)
+            {
+                return false;
+            }
         }
 
         public void Close()
@@ -82,6 +116,42 @@ namespace CommsLIB.SmartPcap.Base
             socket?.Dispose();
             socket = null;
         }
+
+        #region IDisposable Support
+        private bool disposedValue = false; // To detect redundant calls
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposedValue)
+            {
+                if (disposing)
+                {
+                    Close();
+                }
+
+                // TODO: free unmanaged resources (unmanaged objects) and override a finalizer below.
+                // TODO: set large fields to null.
+
+                disposedValue = true;
+            }
+        }
+
+        // TODO: override a finalizer only if Dispose(bool disposing) above has code to free unmanaged resources.
+        // ~UDPSender()
+        // {
+        //   // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+        //   Dispose(false);
+        // }
+
+        // This code added to correctly implement the disposable pattern.
+        public void Dispose()
+        {
+            // Do not change this code. Put cleanup code in Dispose(bool disposing) above.
+            Dispose(true);
+            // TODO: uncomment the following line if the finalizer is overridden above.
+            // GC.SuppressFinalize(this);
+        }
+        #endregion
 
     }
 }

@@ -20,6 +20,10 @@ namespace CommsLIB.SmartPcap
             Recording
         }
 
+        #region logger
+        private static NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
+        #endregion
+
         #region const
         private const int SAMPLES_DATARATE_AVERAGE = 100;
         #endregion
@@ -27,6 +31,8 @@ namespace CommsLIB.SmartPcap
         #region member
         private string filePath = @".\dumptest.mpg";
         private string idxFilePath = @".\dumptest.idx";
+        private string folder;
+        private string name;
         private FileStream file;
         private FileStream idxFile;
         private byte[] idxBuffer;
@@ -46,11 +52,11 @@ namespace CommsLIB.SmartPcap
         public delegate void DataRateDelegate(Dictionary<string, float> dataRates);
         public event DataRateDelegate DataRateEvent;
 
-        private Dictionary<string, UDPNETCommunicator<object>> udpListeners = new Dictionary<string, UDPNETCommunicator<object>>();
+        private Dictionary<string, RecPeerInfo> udpListeners = new Dictionary<string, RecPeerInfo>();
 
         public State CurrentState { get; set; }
 
-        private List<string> _IDs = new List<string>();
+        //private List<string> _IDs = new List<string>();
         private Dictionary<string, float> _dataRate = new Dictionary<string, float>();
         #endregion
 
@@ -60,7 +66,7 @@ namespace CommsLIB.SmartPcap
 
         public NetRecorder()
         {
-            idxBuffer = new byte[HelperTools.idxDataSize];
+            idxBuffer = new byte[HelperTools.idxIndexSize];
             headerBuffer = new byte[HelperTools.headerSize];
         }
 
@@ -78,17 +84,26 @@ namespace CommsLIB.SmartPcap
                 ProgressEvent?.Invoke((float)(file.Position / 1000000.0), secTime);
         }
 
-        public bool AddPeer(string ID, string ip, int port, string netcard = "")
+        public bool AddPeer(string ID, string ip, int port, bool dumpToFile, string netcard = "")
         {
             // Check valid IP
             if (IPAddress.TryParse(ip, out IPAddress ipAddres) && !udpListeners.ContainsKey(ID))
             {
-                UDPNETCommunicator<object> u = new UDPNETCommunicator<object>(null, false);
+                UDPNETCommunicator<object> u = new UDPNETCommunicator<object>();
                 u.Init(new ConnUri($"udp://{ip}::{netcard}:{port}"), false, ID, 0);
                 u.DataReadyEvent += DataReadyEventCallback;
                 u.DataRateEvent += OnDataRate;
 
-                udpListeners.Add(ID, u);
+                RecPeerInfo p = new RecPeerInfo()
+                {
+                    ID = ID,
+                    DumpToFile = dumpToFile,
+                    commsLink = u,
+                    IP = ip,
+                    Port= port
+                };
+
+                udpListeners.Add(ID, p);
                 _dataRate.Add(ID, 0);
 
                 return true;
@@ -101,27 +116,44 @@ namespace CommsLIB.SmartPcap
         {
             if (udpListeners.TryGetValue(id, out var u))
             {
-                u.DataReadyEvent -= DataReadyEventCallback;
-                u.DataRateEvent -= OnDataRate;
+                u.commsLink.DataReadyEvent -= DataReadyEventCallback;
+                u.commsLink.DataRateEvent -= OnDataRate;
             }
 
             _dataRate.Remove(id);
             return udpListeners.Remove(id);
         }
 
-        public void AddPeer<T>(CommunicatorBase<T> commLink)
+        public void AddPeer(ICommunicator commLink, bool dumpToFile)
         {
-            _dataRate.Add(commLink.ID, 0);
-            commLink.DataReadyEvent += DataReadyEventCallback;
-            commLink.DataRateEvent += OnDataRate;
+            if (!udpListeners.ContainsKey(commLink.ID))
+            {
+                commLink.DataReadyEvent += DataReadyEventCallback;
+                commLink.DataRateEvent += OnDataRate;
+
+                RecPeerInfo p = new RecPeerInfo()
+                {
+                    ID = commLink.ID,
+                    DumpToFile = dumpToFile,
+                    commsLink = commLink,
+                    IP = commLink.CommsUri.IP,
+                    Port = commLink.CommsUri.LocalPort
+                };
+
+                udpListeners.Add(commLink.ID, p);
+                _dataRate.Add(commLink.ID, 0);
+            }
         }
 
-        public void RemovePeer<T>(CommunicatorBase<T> commLink)
+        public void RemovePeer(ICommunicator commLink)
         {
             try
             {
                 commLink.DataReadyEvent -= DataReadyEventCallback;
+                commLink.DataRateEvent -= OnDataRate;
+
                 _dataRate.Remove(commLink.ID);
+                udpListeners.Remove(commLink.ID);
             }
             catch {
                 
@@ -133,9 +165,9 @@ namespace CommsLIB.SmartPcap
 
         }
 
-        private void OnDataRate(string ID, float Mbps)
+        private void OnDataRate(string ID, float MbpsRX, float MbpsTX)
         {
-            _dataRate[ID] = Mbps;
+            _dataRate[ID] = MbpsRX;
         }
 
 
@@ -151,10 +183,10 @@ namespace CommsLIB.SmartPcap
             if (timeOffset == long.MinValue)
             {
                 timeOffset = time;
-                // Write idx Header
-                HelperTools.Long2Bytes(idxBuffer, 0, HelperTools.millisFromEpochNow());
-                HelperTools.Int32Bytes(idxBuffer, 8, secsIdxInterval);
-                idxFile.Write(idxBuffer, 0, 12);
+                //// Write idx Header
+                //HelperTools.Long2Bytes(idxBuffer, 0, HelperTools.millisFromEpochNow());
+                //HelperTools.Int32Bytes(idxBuffer, 8, secsIdxInterval);
+                //idxFile.Write(idxBuffer, 0, 12);
             }
 
             correctedTime = time - timeOffset;
@@ -164,18 +196,11 @@ namespace CommsLIB.SmartPcap
             // Save to file
             file.Write(headerBuffer, 0, HelperTools.headerSize);
             file.Write(buff, rawDataOffset, rawDataSize);
-        }
 
-        //private void UpdateAllDataRates()
-        //{
-        //    foreach (string key in _IDs)
-        //    {
-        //        //_dataRate[key] = _dataRateCalculators[key].Average * 8; // Mbps
-        //        //Console.WriteLine($"DataReady {key}: {_dataRate[key]} - Count: {_loopCount[key]}");
-        //        _dataRate[key] = (_loopCount[key] * 8f)/ 1048576; // 
-        //        _loopCount[key] = 0;
-        //    }
-        //}
+            // Dump if requested
+            if (udpListeners[ID].DumpToFile && udpListeners[ID].file != null)
+                udpListeners[ID].file.Write(buff, rawDataOffset, rawDataSize);
+        }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         private void WriteIdx()
@@ -184,7 +209,7 @@ namespace CommsLIB.SmartPcap
             HelperTools.Int32Bytes(idxBuffer, 0, secTime);
             HelperTools.Long2Bytes(idxBuffer, 4, file.Position);
 
-            idxFile.Write(idxBuffer, 0, HelperTools.idxDataSize);
+            idxFile.Write(idxBuffer, 0, HelperTools.idxIndexSize);
         }
 
         private void FillHeader(long _time, string _ID, int _size, byte[] _buffer, ushort[] ipChunks, int _port)
@@ -203,27 +228,33 @@ namespace CommsLIB.SmartPcap
             HelperTools.Int32Bytes(_buffer, 20, _size);
         }
 
-        public void SetFilePath(string _filePath)
+        public void SetRecordingFolder(string _folder, string _name)
         {
             if (CurrentState != State.Recording)
             {
-                string folder = Path.GetDirectoryName(_filePath);
+                if (!Directory.Exists(_folder))
+                    Directory.CreateDirectory(_folder);
 
-                filePath = _filePath+".raw";
-                idxFilePath = Path.Combine(folder, Path.GetFileNameWithoutExtension(filePath) + ".idx");
+                name = _name;
+                folder = _folder;
+                filePath = Path.Combine(_folder , $"{_name}.raw");
+                idxFilePath = Path.Combine(_folder, $"{_name}.idx");
             }
         }
 
+        //public void SetFilePath(string _filePath)
+        //{
+        //    if (CurrentState != State.Recording)
+        //    {
+        //        string folder = Path.GetDirectoryName(_filePath);
+
+        //        filePath = _filePath+".raw";
+        //        idxFilePath = Path.Combine(folder, Path.GetFileNameWithoutExtension(filePath) + ".idx");
+        //    }
+        //}
+
         public void Start(int _secsIdxInterval)
         {
-            // Delete previous file if exists
-            if (File.Exists(filePath))
-                File.Delete(filePath);
-
-            // Delete previous file if exists
-            if (File.Exists(idxFilePath))
-                File.Delete(idxFilePath);
-
             secsIdxInterval = _secsIdxInterval;
             timeOffset = long.MinValue;
             secTime = 0;
@@ -232,11 +263,21 @@ namespace CommsLIB.SmartPcap
             file = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None);
             idxFile = new FileStream(idxFilePath, FileMode.Create, FileAccess.Write,FileShare.None);
 
+            // Open file per Peer with Dump2File
+            foreach(KeyValuePair<string, RecPeerInfo> kv in udpListeners)
+            {
+                if (kv.Value.DumpToFile)
+                    kv.Value.file = new FileStream(Path.Combine(folder, $"{name}_{kv.Key}.dump"),FileMode.Create, FileAccess.Write, FileShare.None);
+            }
+
+            // Fill IDX File header
+            FillIDXHeader(idxFile);
+
             // Start Timer
             eventTimer = new Timer(OnEventTimer, null, 0, 1000);
 
             foreach (var u in udpListeners.Values)
-                u.Start();
+                u.commsLink.Start();
 
             CurrentState = State.Recording;
             StatusEvent?.Invoke(CurrentState);
@@ -246,25 +287,47 @@ namespace CommsLIB.SmartPcap
         {
             List<Task> tasks = new List<Task>();
             foreach (var u in udpListeners.Values)
-                tasks.Add(u.Stop());
+                tasks.Add(u.commsLink.Stop());
 
             await Task.WhenAll(tasks);
-            //Task.WaitAll(tasks.ToArray());
 
             eventTimer.Dispose();
             eventTimer = null;
-            //foreach (var u in udpListeners)
-            //    u.Dispose();
+
+            foreach (KeyValuePair<string, RecPeerInfo> kv in udpListeners)
+            {
+                if (kv.Value.DumpToFile)
+                    kv.Value.file.Dispose();
+            }
 
             file.Close();
             file.Dispose();
             idxFile.Close();
             idxFile.Dispose();
 
-            //udpListeners.Clear();
-
             CurrentState = State.Stoped;
             StatusEvent?.Invoke(CurrentState);
+        }
+
+        private void FillIDXHeader(FileStream _idxFile)
+        {
+            byte[] idxHeader = new byte[4096];
+            int i = 0;
+            // Write idx Header
+            // Time of recording
+            i += HelperTools.Long2Bytes(idxHeader, i, HelperTools.millisFromEpochNow());
+            // Interval
+            i += HelperTools.Int32Bytes(idxHeader, i, secsIdxInterval);
+            // Number of peers
+            i += HelperTools.Int32Bytes(idxHeader, i, udpListeners.Count);
+            foreach (RecPeerInfo p in udpListeners.Values)
+            {
+                i += HelperTools.StringWithLength2Bytes(idxHeader, i, p.ID);
+                i += HelperTools.StringWithLength2Bytes(idxHeader, i, p.IP);
+                i += HelperTools.Int32Bytes(idxHeader, i, p.Port);
+            }
+
+            idxFile.Write(idxHeader, 0, i);
         }
 
         public void Dispose()

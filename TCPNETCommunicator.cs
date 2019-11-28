@@ -44,7 +44,8 @@ namespace CommsLIB.Communications
         private byte[] txBuffer = new byte[65536];
 
         private Timer dataRateTimer;
-        private int bytesAccumulator = 0;
+        private int bytesAccumulatorRX = 0;
+        private int bytesAccumulatorTX = 0;
         #endregion
 
 
@@ -81,6 +82,7 @@ namespace CommsLIB.Communications
             MINIMUM_SEND_GAP = _sendGap;
             RECEIVE_TIMEOUT = inactivityMS;
             frameWrapper?.SetID(ID);
+            State = STATE.STOP;
 
             CommsUri = uri ?? CommsUri;
             SetIPChunks(CommsUri.IP);
@@ -101,13 +103,16 @@ namespace CommsLIB.Communications
             messageQueu.Put(serializedObject, length);
         }
 
-        public override void SendSync(byte[] bytes, int offset, int length)
+        public override bool SendSync(byte[] bytes, int offset, int length)
         {
-            Send2Equipment(bytes, offset, length, tcpEq);
+            return Send2Equipment(bytes, offset, length, tcpEq);
         }
 
         public override void Start()
         {
+            if (State == STATE.RUNNING)
+                return;
+
             logger.Info("Start");
             exit = false;
 
@@ -155,7 +160,8 @@ namespace CommsLIB.Communications
 
             logger.Info("ClientDown - " + tcpEq.ID);
 
-            bytesAccumulator = 0;
+            bytesAccumulatorRX = 0;
+            bytesAccumulatorTX = 0;
 
             try
             {
@@ -179,7 +185,8 @@ namespace CommsLIB.Communications
         {
             tcpEq.ClientImpl = o;
 
-            bytesAccumulator = 0;
+            bytesAccumulatorRX = 0;
+            bytesAccumulatorTX = 0;
 
             // Launch Event
             FireConnectionEvent(tcpEq.ID, tcpEq.ConnUri, true);
@@ -209,17 +216,19 @@ namespace CommsLIB.Communications
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        private void Send2Equipment(byte[] data, int offset, int length, CommEquipmentObject<TcpClient> o)
+        private bool Send2Equipment(byte[] data, int offset, int length, CommEquipmentObject<TcpClient> o)
         {
             if (o == null || o.ClientImpl == null)
-                return;
+                return false;
 
             string ID = o.ID;
             TcpClient t = o.ClientImpl;
 
             try
             {
-                t?.Client?.Send(data, offset, length, SocketFlags.None);
+                int nBytes = t.Client.Send(data, offset, length, SocketFlags.None);
+
+                bytesAccumulatorTX += nBytes;
                 LastTX = TimeTools.GetCoarseMillisNow();
             }
             catch (Exception e)
@@ -227,7 +236,11 @@ namespace CommsLIB.Communications
                 logger.Error(e, "Error while sending TCPNet");
                 // Client Down
                 ClientDown();
+
+                return false;
             }
+
+            return true;
         }
 
         private void Connect2EquipmentCallback()
@@ -254,7 +267,7 @@ namespace CommsLIB.Communications
                             while ((rx = tcpEq.ClientImpl.Client.Receive(rxBuffer)) > 0)
                             {
                                 // Update Accumulator
-                                bytesAccumulator += rx;
+                                bytesAccumulatorRX += rx;
                                 // Update RX Time
                                 tcpEq.timeLastIncoming = TimeTools.GetCoarseMillisNow();
 
@@ -266,7 +279,7 @@ namespace CommsLIB.Communications
                                                 0,
                                                 rx,
                                                 tcpEq.ID,
-                                                ipChunks);
+                                                IpChunks);
 
                                 // Feed to FrameWrapper
                                 frameWrapper?.AddBytes(rxBuffer, rx);
@@ -304,7 +317,7 @@ namespace CommsLIB.Communications
                     while ((rx = tcpEq.ClientImpl.Client.Receive(rxBuffer)) > 0 && !exit)
                     {
                         // Update Accumulator
-                        bytesAccumulator += rx;
+                        bytesAccumulatorRX += rx;
                         // Update RX Time
                         tcpEq.timeLastIncoming = TimeTools.GetCoarseMillisNow();
 
@@ -316,7 +329,7 @@ namespace CommsLIB.Communications
                                         0,
                                         rx,
                                         tcpEq.ID,
-                                        ipChunks);
+                                        IpChunks);
 
                         // Feed to FrameWrapper
                         frameWrapper?.AddBytes(rxBuffer, rx);
@@ -335,9 +348,13 @@ namespace CommsLIB.Communications
 
         private void OnDataRate(object state)
         {
-            float dataRateMpbs = (bytesAccumulator * 8f) / 1048576; // Mpbs
-            bytesAccumulator = 0;
-            FireDataRateEvent(ID, dataRateMpbs);
+            float dataRateMpbsRX = (bytesAccumulatorRX * 8f) / 1048576; // Mpbs
+            float dataRateMpbsTX = (bytesAccumulatorTX * 8f) / 1048576; // Mpbs
+
+            bytesAccumulatorRX = 0;
+            bytesAccumulatorTX = 0;
+
+            FireDataRateEvent(ID, dataRateMpbsRX, dataRateMpbsTX);
         }
 
 

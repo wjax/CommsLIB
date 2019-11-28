@@ -1,8 +1,12 @@
-﻿using CommsLIB.SmartPcap.Base;
+﻿using CommsLIB.Base;
+using CommsLIB.Communications;
+using CommsLIB.SmartPcap.Base;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -17,6 +21,13 @@ namespace CommsLIB.SmartPcap
             Paused
         }
 
+        #region logger
+        private static NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
+        #endregion
+
+        public delegate void DataRateDelegate(Dictionary<string, float> dataRates);
+        public event DataRateDelegate DataRateEvent;
+
         #region members
         private string filePath = "";
         private string idxFilePath = "";
@@ -28,7 +39,7 @@ namespace CommsLIB.SmartPcap
 
         private byte[] buffer;
 
-        private byte[] idxBuffer = new byte[HelperTools.idxDataSize];
+        private byte[] idxBuffer = new byte[HelperTools.idxIndexSize];
 
         private Task runningJob;
         private CancellationTokenSource cancelSource;
@@ -38,8 +49,9 @@ namespace CommsLIB.SmartPcap
         private bool has2UpdatePosition = false;
         private long newPosition = 0;
 
-        private Dictionary<int, UDPSender> udpSenders = new Dictionary<int, UDPSender>();
-        private Dictionary<int, ulong> udpReplayAddresses = new Dictionary<int, ulong>();
+        private Dictionary<int, PlayPeerInfo> udpSenders = new Dictionary<int, PlayPeerInfo>();
+        private Dictionary<int, PlayPeerInfo> udpSendersOriginal = new Dictionary<int, PlayPeerInfo>();
+        private Dictionary<string, float> _dataRate = new Dictionary<string, float>();
 
         public delegate void StatusDelegate(State state);
         public event StatusDelegate StatusEvent;
@@ -52,23 +64,73 @@ namespace CommsLIB.SmartPcap
 
         private Dictionary<long, long> timeIndexes = new Dictionary<long, long>();
         private int lastTime;
+        private long replayTime;
 
-        private string netCard = "";
+        #endregion
 
+        #region timer
+        private Timer eventTimer;
         #endregion
 
         ArrayPool<byte> bytePool = ArrayPool<byte>.Shared;
 
 
-        public NetPlayer(string _netcard)
+        public NetPlayer()
         {
-            netCard = _netcard;
             buffer = bytePool.Rent(HelperTools.SIZE_BYTES);
         }
 
-        public int LoadFile(string _filePath, out DateTime _startTime)
+        public static (ICollection<PlayPeerInfo>, DateTime, int, long) GetRecordingInfo(string _idxFilePath)
+        {
+            int duration = 0;
+            int nPeers = 0;
+            DateTime date = DateTime.MinValue;
+            List<PlayPeerInfo> peers = new List<PlayPeerInfo>();
+
+            using (FileStream idxFile = new FileStream(_idxFilePath, FileMode.Open, FileAccess.Read))
+            using (BinaryReader idxBinaryReader = new BinaryReader(idxFile))
+            {
+                byte[] auxBuff = new byte[1024];
+
+                // Read DateTime, Secs Interval and Peers info
+                if (idxBinaryReader.Read(auxBuff, 0, 16) == 16)
+                {
+                    date = HelperTools.fromMillis(BitConverter.ToInt64(auxBuff, 0));
+                    int secsIdxInterval = BitConverter.ToInt32(auxBuff, 8);
+                    nPeers = BitConverter.ToInt32(auxBuff, 12);
+
+                    // Read peers
+                    for (int i = 0; i < nPeers; i++)
+                    {
+                        string ID = HelperTools.Bytes2StringWithLength(idxFile);
+                        string IP = HelperTools.Bytes2StringWithLength(idxFile);
+                        int Port = idxBinaryReader.ReadInt32();
+
+                        peers.Add(new PlayPeerInfo
+                            {
+                                ID = ID,
+                                IP = IP,
+                                Port = Port
+                            });
+                    }
+
+                    // Guess duration
+                    FileInfo fInfo = new FileInfo(_idxFilePath);
+                    duration = ((int)((fInfo.Length - idxBinaryReader.BaseStream.Position) / HelperTools.idxIndexSize)) * secsIdxInterval;
+                }
+            }
+
+            string rawFile = Path.Combine(Path.GetDirectoryName(_idxFilePath), Path.GetFileNameWithoutExtension(_idxFilePath)) + ".raw";
+            FileInfo fRaw = new FileInfo(rawFile);
+
+            return (peers, date, duration, fRaw.Length);
+        }
+
+        public ICollection<PlayPeerInfo> LoadFile(string _filePath, out DateTime _startTime, out int _lastTime)
         {
             Stop();
+
+            _lastTime = 0;
 
             filePath = _filePath;
             idxFilePath = Path.Combine(Path.GetDirectoryName(filePath),Path.GetFileNameWithoutExtension(filePath)) + ".idx";
@@ -77,19 +139,52 @@ namespace CommsLIB.SmartPcap
             lastTime = 0;
             _startTime = DateTime.MinValue;
             timeIndexes.Clear();
+            int nPeers = 0;
+            udpSendersOriginal.Clear();
+            udpSenders.Clear();
+            _dataRate.Clear();
+            
+
             using (FileStream idxFile = new FileStream(idxFilePath, FileMode.Open, FileAccess.Read))
+            using (BinaryReader idxBinaryReader = new BinaryReader(idxFile))
             {
                 int time = 0; long position = 0;
-                byte[] auxBuff = bytePool.Rent(HelperTools.idxDataSize);
+                byte[] auxBuff = bytePool.Rent(4096);
 
-                // Read DateTime and Secs Interval
-                if (idxFile.Read(auxBuff, 0, HelperTools.idxDataSize) == HelperTools.idxDataSize)
+                // Read DateTime, Secs Interval and Peers info
+                if (idxBinaryReader.Read(auxBuff, 0, 16) == 16)
                 {
                     RecDateTime = _startTime = HelperTools.fromMillis(BitConverter.ToInt64(auxBuff, 0));
                     secsIdxInterval = BitConverter.ToInt32(auxBuff, 8);
+                    nPeers = BitConverter.ToInt32(auxBuff, 12);
+
+                    // Read peers
+                    for (int i = 0; i<nPeers;i++)
+                    {
+                        string ID = HelperTools.Bytes2StringWithLength(idxFile);
+                        string IP = HelperTools.Bytes2StringWithLength(idxFile);
+                        int Port = idxBinaryReader.ReadInt32();
+
+                        udpSenders.Add(HelperTools.GetDeterministicHashCode(ID),
+                            new PlayPeerInfo {
+                                ID = ID,
+                                IP = IP,
+                                Port = Port
+                            });
+
+                        udpSendersOriginal.Add(HelperTools.GetDeterministicHashCode(ID),
+                            new PlayPeerInfo
+                            {
+                                ID = ID,
+                                IP = IP,
+                                Port = Port
+                            });
+
+                        _dataRate[ID] = 0f;
+                    }
 
                     // Get All times to cache
-                    while (idxFile.Read(auxBuff, 0, HelperTools.idxDataSize) == HelperTools.idxDataSize)
+                    while (idxBinaryReader.Read(auxBuff, 0, HelperTools.idxIndexSize) == HelperTools.idxIndexSize)
                     {
                         time = BitConverter.ToInt32(auxBuff, 0);
                         position = BitConverter.ToInt64(auxBuff, 4);
@@ -100,15 +195,20 @@ namespace CommsLIB.SmartPcap
                         }
                         catch(Exception e)
                         {
-
+                            logger.Error(e, "Error reading idx file. TimeIndexes");
                         }
                     }
-                    lastTime = time;
+                    _lastTime = lastTime = time;
                 }
                 bytePool.Return(auxBuff);
             }
 
-            return lastTime;
+            return udpSenders.Values;
+        }
+
+        private void OnDataRate(string ID, float MbpsTX)
+        {
+            _dataRate[ID] = MbpsTX;
         }
 
         public void Seek(int _time)
@@ -116,7 +216,7 @@ namespace CommsLIB.SmartPcap
             // Find closest time in Dictionary
             if (_time <= lastTime)
             {
-                int seqTime = (_time / secsIdxInterval) * secsIdxInterval;
+                int seqTime = (_time / (secsIdxInterval == 0 ? 1: secsIdxInterval)) * secsIdxInterval;
 
                 if (timeIndexes.ContainsKey(seqTime))
                 {
@@ -135,8 +235,8 @@ namespace CommsLIB.SmartPcap
             if (string.IsNullOrEmpty(filePath))
                 return;
 
-            if (onlyLocal != _onlyLocal)
-                CloseSenders();
+            //if (onlyLocal != _onlyLocal)
+            //    CloseSenders();
 
             if (CurrentState == State.Paused)
                 Resume();
@@ -147,11 +247,23 @@ namespace CommsLIB.SmartPcap
                 onlyLocal = _onlyLocal;
                 cancelSource = new CancellationTokenSource();
                 cancelToken = cancelSource.Token;
-                runningJob = new Task(() => RunReaderSenderProcessCallback(filePath, idxFilePath, cancelToken), cancelToken, TaskCreationOptions.LongRunning);
+                runningJob = new Task(() => RunReaderSenderProcessCallback(filePath, idxFilePath, cancelToken), cancelToken, TaskCreationOptions.None);
                 CurrentState = State.Playing;
 
-                runningJob.Start();
+                // Create Senders
+                foreach (PlayPeerInfo p in udpSenders.Values)
+                {
+                    var u = new UDPSender(p.ID, p.IP, p.Port, false);
+                    u.DataRateEvent += OnDataRate;
+                    u.Start();
 
+                    p.commsLink = u;
+                }
+
+                // Start Timer
+                eventTimer = new Timer(OnEventTimer, null, 0, 1000);
+
+                runningJob.Start();
                 
                 StatusEvent?.Invoke(CurrentState);
             }
@@ -160,9 +272,12 @@ namespace CommsLIB.SmartPcap
         private void CloseSenders()
         {
             foreach (var u in udpSenders.Values)
-                u.Close();
+            {
+                u.commsLink.DataRateEvent -= OnDataRate;
+                (u.commsLink as IDisposable).Dispose();
+            }
 
-            udpSenders.Clear();
+            //udpSenders.Clear();
         }
 
         private void RunReaderSenderProcessCallback(string _filePath, string _idxFilePath, CancellationToken token)
@@ -170,7 +285,8 @@ namespace CommsLIB.SmartPcap
             ulong ipport;
             int n_bytes = 0, size = 0;
             int hashedID = 0;
-            long timeoffset = 0, waitTime = 0, nowTime = 0, lastTimeStatus = 0, time = 0;
+            long timeoffset = 0, waitTime = 0, nowTime = 0, time = 0;
+            int lastTimeStatusS = 0, timeStatusS = 0;
 
             // Increase timers resolution
             WinAPI.WinAPITime.TimeBeginPeriod(1);
@@ -197,10 +313,13 @@ namespace CommsLIB.SmartPcap
                         if ((n_bytes = file.Read(buffer, 0, HelperTools.headerSize)) == HelperTools.headerSize)
                         {
                             // Get fields
-                            time = BitConverter.ToInt64(buffer, 0);
+                            replayTime = time = BitConverter.ToInt64(buffer, 0);
                             hashedID = BitConverter.ToInt32(buffer, 8);
                             ipport = BitConverter.ToUInt64(buffer, 12);
                             size = BitConverter.ToInt32(buffer, 20);
+
+                            // Update time in secs
+                            timeStatusS = (int)(replayTime / 1000_000);
 
                             // Read Payload
                             n_bytes = file.Read(buffer, 0, size);
@@ -212,7 +331,6 @@ namespace CommsLIB.SmartPcap
                                 timeoffset = nowTime - time;
                                 waitTime = 0;
                                 resetTimeOffsetRequired = false;
-                                lastTimeStatus = time;
                             }
                             else
                             {
@@ -225,11 +343,11 @@ namespace CommsLIB.SmartPcap
                             // Send
                             Send(ipport, hashedID, buffer, 0, n_bytes);
 
-                            // Fire Event every 1 sec
-                            if (time - lastTimeStatus > 1000000)
+                            // Update Progress
+                            if (timeStatusS != lastTimeStatusS)
                             {
-                                ProgressEvent?.Invoke((int)(time / 1000000));
-                                lastTimeStatus = time;
+                                Task.Run(()=> ProgressEvent?.Invoke(timeStatusS));
+                                lastTimeStatusS = timeStatusS;
                             }
 
                             if (has2UpdatePosition)
@@ -246,8 +364,13 @@ namespace CommsLIB.SmartPcap
                             // Update Stop Status
                             CurrentState = State.Stoped;
                             StatusEvent?.Invoke(CurrentState);
+                            foreach (var k in _dataRate.Keys.ToList())
+                                _dataRate[k] = 0;
+                            DataRateEvent?.Invoke(_dataRate);
                             // rewind
                             Seek(0);
+                            eventTimer.Dispose();
+                            eventTimer = null;
                             ProgressEvent?.Invoke(0);
                         }
                     }
@@ -258,30 +381,68 @@ namespace CommsLIB.SmartPcap
 
         private void Send(ulong _ipport, int hashedID, byte[] _buff, int offset, int count)
         {
-            UDPSender u = null;
-            if (!udpSenders.ContainsKey(hashedID))
+            if (udpSenders.TryGetValue(hashedID, out PlayPeerInfo p) && p.IsEnabled)
             {
-                ulong dst = _ipport;
-                if (udpReplayAddresses.ContainsKey(hashedID))
-                    dst = udpReplayAddresses[hashedID];
-
-                u = new UDPSender(dst, onlyLocal, netCard);
-                u.Start();
-                udpSenders.Add(hashedID, u);
+                System.Diagnostics.Debug.WriteLine($"Sending {hashedID} : {count}");
+                p.commsLink.Send(_buff, offset, count);
             }
-            else
-                u = udpSenders[hashedID];
-
-            u.Send(_buff, offset, count);
         }
 
-        public void AddReplayAddress(string _ID, string _dstIP, int _dstPort)
+        public void SetPeerEnabled(string _id, bool enabled)
         {
-            //ulong src = HelperTools.IPPort2Long(_srcIP, _srcPort);
-            int hashedID = HelperTools.GetDeterministicHashCode(_ID);
-            ulong dst = HelperTools.IPPort2Long(_dstIP, _dstPort);
+            int hashedID = HelperTools.GetDeterministicHashCode(_id);
+            if (udpSenders.TryGetValue(hashedID, out PlayPeerInfo p))
+                p.IsEnabled = enabled;
+        }
 
-            udpReplayAddresses[hashedID] = dst;
+        public bool AddReplayAddress(string _ID, string _dstIP, int _dstPort, string _nic)
+        {
+            if (CurrentState != State.Stoped)
+                return false;
+
+            int hashedID = HelperTools.GetDeterministicHashCode(_ID);
+            if (udpSenders.TryGetValue(hashedID, out PlayPeerInfo p))
+            {
+                p.IP = _dstIP;
+                p.Port = _dstPort;
+                p.NIC = _nic;
+
+                return true;
+            }
+
+            return false;
+        }
+
+        public bool RemovePeer(string _id)
+        {
+            if (CurrentState != State.Stoped)
+                return false;
+
+            return udpSenders.Remove(HelperTools.GetDeterministicHashCode(_id));
+        }
+
+        public bool RemoveReplayAddress(string _id, out PlayPeerInfo pOriginal)
+        {
+            pOriginal = null;
+
+            if (CurrentState != State.Stoped)
+                return false;
+
+            int hashedID = HelperTools.GetDeterministicHashCode(_id);
+            if (udpSenders.TryGetValue(hashedID, out PlayPeerInfo p))
+            {
+                var original = udpSendersOriginal[hashedID];
+
+                p.IP = original.IP;
+                p.Port = original.Port;
+                p.NIC = original.NIC;
+
+                pOriginal = original;
+
+                return true;
+            }
+
+            return false;
         }
 
         public void Pause()
@@ -305,14 +466,40 @@ namespace CommsLIB.SmartPcap
 
         public void Stop()
         {
+            if (CurrentState == State.Stoped)
+                return;
+
             if (cancelToken != null && cancelToken.CanBeCanceled)
             {
                 cancelSource.Cancel();
                 runningJob.Wait();
             }
 
+            // Clean Senders
+            CloseSenders();
+
+            eventTimer?.Dispose();
+            eventTimer = null;
+
             CurrentState = State.Stoped;
             StatusEvent?.Invoke(CurrentState);
+
+            foreach (var k in _dataRate.Keys.ToList())
+                _dataRate[k] = 0;
+            DataRateEvent?.Invoke(_dataRate);
+
+            ProgressEvent?.Invoke(0);
+        }
+
+        private void OnEventTimer(object state)
+        {
+            // Status event
+            if (CurrentState == State.Playing)
+            {
+                // Datarate event
+                DataRateEvent?.Invoke(_dataRate);
+                //ProgressEvent?.Invoke((int)(replayTime / 1000000));
+            }
         }
 
         public void Dispose()

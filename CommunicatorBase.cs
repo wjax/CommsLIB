@@ -18,25 +18,21 @@ namespace CommsLIB.Communications
                 case ConnUri.TYPE.UDP:
                     c = new UDPNETCommunicator<T>(frameWrapper, circular);
                     break;
-                //case ConnUri.TYPE.SERIAL:
-                //    c = new SERIALCommunicator<T>(frameWrapper);
-                //    break;
-
             }
 
             return c;
         }
     }
 
-    public abstract class CommunicatorBase<T> : IDisposable
+    public abstract class CommunicatorBase<T> : IDisposable, ICommunicator
     {
         public event DataReadyEventHandler DataReadyEvent;
-        public delegate void DataReadyEventHandler(string ip, int port, long time, byte[] bytes, int offset, int length , string ID, ushort[] ipChunks);
+        //public delegate void DataReadyEventHandler(string ip, int port, long time, byte[] bytes, int offset, int length , string ID, ushort[] ipChunks);
 
-        public delegate void ConnectionStateDelegate(string ID, ConnUri uri, bool connected);
+        //public delegate void ConnectionStateDelegate(string ID, ConnUri uri, bool connected);
         public event ConnectionStateDelegate ConnectionStateEvent;
 
-        public delegate void DataRateDelegate(string ID, float Mbps);
+        //public delegate void DataRateDelegate(string ID, float Mbps);
         public event DataRateDelegate DataRateEvent;
 
         public enum STATE
@@ -47,14 +43,14 @@ namespace CommsLIB.Communications
         public STATE State;
 
         public ConnUri CommsUri { get; protected set; }
-        public ushort[] ipChunks = new ushort[4];
-        public string ID { get; protected set; }
+        public ushort[] IpChunks { get; protected set; } = new ushort[4];
+        public string ID { get; set; }
 
         public abstract void Init(ConnUri uri, bool persistent, string ID, int inactivityMS, int sendGAP = 0);
         public abstract void Start();
         public abstract Task Stop();
         public abstract void SendASync(byte[] bytes, int length);
-        public abstract void SendSync(byte[] bytes, int offset, int length);
+        public abstract bool SendSync(byte[] bytes, int offset, int length);
         public abstract void SendSync(T protoBufMessage);
         public abstract FrameWrapperBase<T> FrameWrapper { get; }
         
@@ -69,9 +65,9 @@ namespace CommsLIB.Communications
             ConnectionStateEvent?.Invoke(ID, uri, connected);
         }
 
-        public virtual void FireDataRateEvent(string ID, float dataRateMbps)
+        public virtual void FireDataRateEvent(string ID, float dataRateMbpsRX, float dataRateMbpsTX)
         {
-            DataRateEvent?.Invoke(ID, dataRateMbps);
+            DataRateEvent?.Invoke(ID, dataRateMbpsRX, dataRateMbpsTX);
         }
 
         protected virtual void SetIPChunks(string _ip)
@@ -79,7 +75,7 @@ namespace CommsLIB.Communications
             string[] chunks = _ip.Split('.');
             if (chunks.Length == 4)
                 for (int i = 0; i < 4; i++)
-                    ipChunks[i] = ushort.Parse(chunks[i]);
+                    IpChunks[i] = ushort.Parse(chunks[i]);
         }
 
         public void UnsubscribeEventHandlers()
