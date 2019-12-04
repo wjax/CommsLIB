@@ -23,6 +23,7 @@ namespace ConfTestClient.Comms
         #region members
         private TcpListener server = null;
         private int ListeningPort;
+        private string ListeningIP;
 
         private Dictionary<string, CommunicatorBase<U>> ClientList = new Dictionary<string, CommunicatorBase<U>>();
         private object lockerClientList = new object();
@@ -50,9 +51,10 @@ namespace ConfTestClient.Comms
         private bool UseCircularBuffers = false;
         #endregion
 
-        public TCPSmartServer(int _port, bool _useCircularBuffers=false)
+        public TCPSmartServer(int _port, string _ip = null, bool _useCircularBuffers=false)
         {
             ListeningPort = _port;
+            ListeningIP = _ip;
             UseCircularBuffers = _useCircularBuffers;
         }
 
@@ -60,7 +62,7 @@ namespace ConfTestClient.Comms
         {
             Stop();
 
-            server = new TcpListener(IPAddress.Any, ListeningPort);
+            server = new TcpListener(string.IsNullOrEmpty(ListeningIP) ? IPAddress.Any : IPAddress.Parse(ListeningIP), ListeningPort);
             server.Start();
 
             cancelListenSource = new CancellationTokenSource();
