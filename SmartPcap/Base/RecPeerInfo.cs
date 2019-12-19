@@ -11,6 +11,7 @@ namespace CommsLIB.SmartPcap.Base
         public string ID;
         public float DataRate;
         public bool DumpToFile;
+        public string DumpFileExtension;
 
         public string IP;
         public int Port;

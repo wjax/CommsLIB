@@ -126,7 +126,7 @@ namespace CommsLIB.Communications
             dataRateTimer.Dispose();
 
             messageQueu.Reset();
-            udpEq.ClientImpl.Dispose();
+            udpEq.ClientImpl?.Dispose();
 
             await senderTask;
             await receiverTask;

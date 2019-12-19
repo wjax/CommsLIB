@@ -84,7 +84,7 @@ namespace CommsLIB.SmartPcap
                 ProgressEvent?.Invoke((float)(file.Position / 1000000.0), secTime);
         }
 
-        public bool AddPeer(string ID, string ip, int port, bool dumpToFile, string netcard = "")
+        public bool AddPeer(string ID, string ip, int port, bool dumpToFile, string netcard = "", string dumpFileExtension = ".dump")
         {
             // Check valid IP
             if (IPAddress.TryParse(ip, out IPAddress ipAddres) && !udpListeners.ContainsKey(ID))
@@ -98,6 +98,7 @@ namespace CommsLIB.SmartPcap
                 {
                     ID = ID,
                     DumpToFile = dumpToFile,
+                    DumpFileExtension = dumpFileExtension,
                     commsLink = u,
                     IP = ip,
                     Port= port
@@ -124,7 +125,7 @@ namespace CommsLIB.SmartPcap
             return udpListeners.Remove(id);
         }
 
-        public void AddPeer(ICommunicator commLink, bool dumpToFile)
+        public void AddPeer(ICommunicator commLink, bool dumpToFile, string dumpFileExtension = ".dump")
         {
             if (!udpListeners.ContainsKey(commLink.ID))
             {
@@ -135,6 +136,7 @@ namespace CommsLIB.SmartPcap
                 {
                     ID = commLink.ID,
                     DumpToFile = dumpToFile,
+                    DumpFileExtension = dumpFileExtension,
                     commsLink = commLink,
                     IP = commLink.CommsUri.IP,
                     Port = commLink.CommsUri.LocalPort
@@ -267,7 +269,7 @@ namespace CommsLIB.SmartPcap
             foreach(KeyValuePair<string, RecPeerInfo> kv in udpListeners)
             {
                 if (kv.Value.DumpToFile)
-                    kv.Value.file = new FileStream(Path.Combine(folder, $"{name}_{kv.Key}.dump"),FileMode.Create, FileAccess.Write, FileShare.None);
+                    kv.Value.file = new FileStream(Path.Combine(folder, $"{name}_{kv.Key}{kv.Value.DumpFileExtension}"),FileMode.Create, FileAccess.Write, FileShare.None);
             }
 
             // Fill IDX File header
