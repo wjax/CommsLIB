@@ -48,7 +48,6 @@ namespace CommsLIB.Communications
         private int bytesAccumulatorTX = 0;
         #endregion
 
-
         public TCPNETCommunicator(FrameWrapperBase<T> _frameWrapper = null, bool circular = false) : base()
         {
             frameWrapper = _frameWrapper != null ? _frameWrapper : null;
@@ -203,7 +202,7 @@ namespace CommsLIB.Communications
                 {
                     int read = messageQueu.Take(ref txBuffer, 0);
 
-                    if ((toWait = TimeTools.GetCoarseMillisNow() - LastTX) < MINIMUM_SEND_GAP)
+                    if ((toWait = MINIMUM_SEND_GAP - (TimeTools.GetCoarseMillisNow() - LastTX)) < MINIMUM_SEND_GAP)
                         Thread.Sleep((int)toWait);
 
                     Send2Equipment(txBuffer, 0, read, tcpEq);

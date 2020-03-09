@@ -140,9 +140,11 @@ namespace ConfTestClient.Comms
             if (!connected)
                 lock (lockerClientList)
                 {
-                    var communicator = ClientList[ID];
-                    communicator.Dispose();
-                    ClientList.Remove(ID);
+                    if (ClientList.TryGetValue(ID, out CommunicatorBase<U> communicator))
+                    {
+                        communicator.Dispose();
+                        ClientList.Remove(ID);
+                    }
                 }    
         }
 
