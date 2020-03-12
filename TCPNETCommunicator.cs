@@ -203,8 +203,12 @@ namespace CommsLIB.Communications
                 {
                     int read = messageQueu.Take(ref txBuffer, 0);
 
-                    if ((toWait = MINIMUM_SEND_GAP - (TimeTools.GetCoarseMillisNow() - LastTX)) < MINIMUM_SEND_GAP && toWait > 0)
+                    long now = TimeTools.GetCoarseMillisNow();
+                    if (now - LastTX < MINIMUM_SEND_GAP)
+                    {
+                        toWait = MINIMUM_SEND_GAP - (now - LastTX);
                         Thread.Sleep((int)toWait);
+                    }
 
                     Send2Equipment(txBuffer, 0, read, tcpEq);
 
