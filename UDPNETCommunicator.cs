@@ -188,16 +188,20 @@ namespace CommsLIB.Communications
         private void DoSendStart()
         {
             long toWait = 0;
+            LastTX = TimeTools.GetCoarseMillisNow();
+
             while (!exit)
             {
                 try
                 {
                     int read = messageQueu.Take(ref txBuffer, 0);
 
-                    if ((toWait = TimeTools.GetCoarseMillisNow() - LastTX) < MINIMUM_SEND_GAP)
+                    if ((toWait = MINIMUM_SEND_GAP - (TimeTools.GetCoarseMillisNow() - LastTX)) < MINIMUM_SEND_GAP && toWait > 0)
                         Thread.Sleep((int)toWait);
 
                     Send2Equipment(txBuffer, 0, read, udpEq);
+
+                    LastTX = TimeTools.GetCoarseMillisNow();
                 }
                 catch (Exception e)
                 {
