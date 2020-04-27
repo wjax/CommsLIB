@@ -8,7 +8,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace ConfTestClient.Comms
+namespace CommsLIB.Communications
 {
     public class TCPSmartServer<T , U> : IDisposable where T : FrameWrapperBase<U>, new()
     {

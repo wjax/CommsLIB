@@ -24,7 +24,7 @@ namespace CommsLIB.Communications
         }
     }
 
-    public abstract class CommunicatorBase<T> : IDisposable, ICommunicator
+    public abstract class CommunicatorBase<T> : ICommunicator
     {
         public event DataReadyEventHandler DataReadyEvent;
         //public delegate void DataReadyEventHandler(string ip, int port, long time, byte[] bytes, int offset, int length , string ID, ushort[] ipChunks);
