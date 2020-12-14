@@ -46,6 +46,8 @@ namespace CommsLIB.Communications
         private Timer dataRateTimer;
         private int bytesAccumulatorRX = 0;
         private int bytesAccumulatorTX = 0;
+
+        private object lockSerializer = new object();
         #endregion
 
         public TCPNETCommunicator(FrameWrapperBase<T> _frameWrapper = null, bool circular = false) : base()
@@ -99,12 +101,45 @@ namespace CommsLIB.Communications
 
         public override void SendASync(byte[] serializedObject, int length)
         {
-            messageQueu.Put(serializedObject, length);
+            if (State == STATE.RUNNING)
+                messageQueu.Put(serializedObject, length);
+        }
+
+        /// <summary>
+        /// Serialize and Send a message. Use only with CircularBuffer
+        /// </summary>
+        /// <param name="protoBufMessage"></param>
+        public override void SendASync(T protoBufMessage)
+        {
+            if (!useCircular)
+                throw new Exception("Cant use Send2AllAsync in this mode. Please use Circular Buffer");
+
+            lock (lockSerializer)
+            {
+                byte[] buff = frameWrapper.Data2BytesSync(protoBufMessage, out int count);
+                SendASync(buff, count);
+            }
         }
 
         public override bool SendSync(byte[] bytes, int offset, int length)
         {
-            return Send2Equipment(bytes, offset, length, tcpEq);
+            if (State != STATE.RUNNING)
+                return false;
+            else
+                return Send2Equipment(bytes, offset, length, tcpEq);
+        }
+
+        public override void SendSync(T Message)
+        {
+            if (State != STATE.RUNNING)
+                return;
+
+            lock (lockSerializer)
+            {
+                byte[] buff = frameWrapper.Data2BytesSync(Message, out int count);
+                if (count > 0)
+                    SendSync(buff, 0, count);
+            }
         }
 
         public override void Start()
@@ -142,12 +177,7 @@ namespace CommsLIB.Communications
             State = STATE.STOP;
         }
 
-        public override void SendSync(T Message)
-        {
-            byte[] buff = frameWrapper.Data2BytesSync(Message, out int count);
-            if (count > 0)
-                SendSync(buff, 0, count);
-        }
+        
 
         public override FrameWrapperBase<T> FrameWrapper { get => frameWrapper; }
         #endregion
@@ -386,6 +416,8 @@ namespace CommsLIB.Communications
 
             base.Dispose(disposing);
         }
+
+        
     }
 
 }

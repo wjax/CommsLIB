@@ -52,6 +52,7 @@ namespace CommsLIB.Communications
         public abstract void SendASync(byte[] bytes, int length);
         public abstract bool SendSync(byte[] bytes, int offset, int length);
         public abstract void SendSync(T protoBufMessage);
+        public abstract void SendASync(T protoBufMessage);
         public abstract FrameWrapperBase<T> FrameWrapper { get; }
         
 

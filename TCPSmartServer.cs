@@ -106,7 +106,9 @@ namespace CommsLIB.Communications
 
                 // Add to dict 
                 lock (lockerClientList)
+                {
                     ClientList.Add(id, communicator);
+                }
 
                 // Subscribe to events
                 communicator.ConnectionStateEvent += OnCommunicatorConnection;
@@ -154,6 +156,22 @@ namespace CommsLIB.Communications
             {
                 foreach (KeyValuePair<string, CommunicatorBase<U>> kv in ClientList)
                     kv.Value.SendSync(data);
+            }
+        }
+
+        /// <summary>
+        /// Use only with Circular Buffer
+        /// </summary>
+        /// <param name="data"></param>
+        public void Send2AllAsync(U data)
+        {
+            if (!UseCircularBuffers)
+                throw new Exception("Cant use Send2AllAsync in this mode. Please use Circular Buffer");
+
+            lock (lockerClientList)
+            {
+                foreach (KeyValuePair<string, CommunicatorBase<U>> kv in ClientList)
+                    kv.Value.SendASync(data);
             }
         }
 

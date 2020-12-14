@@ -23,6 +23,15 @@ namespace CommsLIB.Communications
         private const int CONNECTION_TIMEOUT = 5000;
         private const int SEND_TIMEOUT = 100; // Needed on linux as socket will not throw exception when send buffer full, instead blocks "forever"
         private int MINIMUM_SEND_GAP = 0;
+
+        /// <summary>
+        /// Winsock ioctl code which will disable ICMP errors from being propagated to a UDP socket.
+        /// This can occur if a UDP packet is sent to a valid destination but there is no socket
+        /// registered to listen on the given port.
+        /// </summary>
+
+        private const int SIO_UDP_CONNRESET = -1744830452;
+        private byte[] byteTrue = { 0x00, 0x00, 0x00, 0x01 };
         #endregion
 
         #region fields
@@ -53,6 +62,8 @@ namespace CommsLIB.Communications
         private Timer dataRateTimer;
         private int bytesAccumulatorRX = 0;
         private int bytesAccumulatorTX = 0;
+
+        private object lockSerializer = new object();
         #endregion
 
         public UDPNETCommunicator(FrameWrapperBase<T> _frameWrapper = null, bool circular = false) : base()
@@ -91,12 +102,32 @@ namespace CommsLIB.Communications
 
         public override void SendASync(byte[] serializedObject, int length)
         {
-            messageQueu.Put(serializedObject, length);
+            if (State == STATE.RUNNING)
+                messageQueu.Put(serializedObject, length);
+        }
+
+        /// <summary>
+        /// Serialize and Send a message. Use only with CircularBuffer
+        /// </summary>
+        /// <param name="protoBufMessage"></param>
+        public override void SendASync(T protoBufMessage)
+        {
+            if (!useCircular)
+                throw new Exception("Cant use Send2AllAsync in this mode. Please use Circular Buffer");
+
+            lock (lockSerializer)
+            {
+                byte[] buff = frameWrapper.Data2BytesSync(protoBufMessage, out int count);
+                SendASync(buff, count);
+            }
         }
 
         public override bool SendSync(byte[] bytes, int offset, int length)
         {
-            return Send2Equipment(bytes, offset, length, udpEq);
+            if (State != STATE.RUNNING)
+                return false;
+            else
+                return Send2Equipment(bytes, offset, length, udpEq);
         }
 
         public override void Start()
@@ -134,11 +165,18 @@ namespace CommsLIB.Communications
             State = STATE.STOP;
         }
 
+
         public override void SendSync(T Message)
         {
-            byte[] buff = frameWrapper.Data2BytesSync(Message, out int count);
-            if (count > 0)
-                SendSync(buff, 0, count);
+            if (State != STATE.RUNNING)
+                return;
+
+            lock (lockSerializer)
+            {
+                byte[] buff = frameWrapper.Data2BytesSync(Message, out int count);
+                if (count > 0)
+                    SendSync(buff, 0, count);
+            }
         }
 
         public override FrameWrapperBase<T> FrameWrapper { get => frameWrapper; }
@@ -263,6 +301,7 @@ namespace CommsLIB.Communications
                         if (IsMulticast(udpEq.ConnUri.IP, out IPAddress adr))
                             JoinMulticastOnSteroids(t.Client, udpEq.ConnUri.IP);
 
+                        t.Client.IOControl(SIO_UDP_CONNRESET, byteTrue, null);
 
                         if (t != null)
                         {
