@@ -12,6 +12,9 @@ namespace CommsLIB.SmartPcap.Base
         public delegate void DataRateDelegate(string ID, float MbpsTX);
         public event DataRateDelegate DataRateEvent;
 
+        private const int SIO_UDP_CONNRESET = -1744830452;
+        private byte[] byteTrue = { 0x00, 0x00, 0x00, 0x01 };
+
         private string networkIp = "225.25.1.10";
         private int networkPort = 1234;
         private bool isMulticast = false;
@@ -90,7 +93,9 @@ namespace CommsLIB.SmartPcap.Base
 
             if (isMulticast)
                 socket.Ttl = (short)ttl;
-                //socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.MulticastTimeToLive, ttl);
+            //socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.MulticastTimeToLive, ttl);
+
+            socket.IOControl(SIO_UDP_CONNRESET, byteTrue, null);
 
             peer = new IPEndPoint(IPAddress.Parse(networkIp), networkPort);
         }
