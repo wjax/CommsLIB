@@ -21,7 +21,7 @@ namespace CommsLIB.Communications.FrameWrappers.MessagePack
 
         public MessagePackFrameWrapper() : base(false)
         {
-            pipeStreamReader = new SpecialPipeStream(1024*1024*1024, true);
+            pipeStreamReader = new SpecialPipeStream(65536, true);
             memoryStreamTX = new MemoryStream(8192);
         }
 

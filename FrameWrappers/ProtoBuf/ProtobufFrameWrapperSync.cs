@@ -1,5 +1,6 @@
 ﻿using CommsLIB.Base;
 using CommsLIB.Communications.FrameWrappers;
+using Microsoft.Extensions.Logging;
 using ProtoBuf;
 using System;
 using System.Collections.Generic;
@@ -12,28 +13,43 @@ namespace CommsLIB.Communications.FrameWrappers.ProtoBuf
     {
         private SpecialPipeStream pipeStreamReader;
         private MemoryStream memoryStreamTX;
+        private PrefixStyle _prefixStyle = PrefixStyle.Base128;
         T message;
 
-        public ProtoBuffFrameWrapper() : base(false)
+        #region logger
+        private readonly ILogger<ProtoBuffFrameWrapper<T>> logger = null;
+        #endregion
+
+        public ProtoBuffFrameWrapper(PrefixStyle prefixStyle = PrefixStyle.Base128, ILogger<ProtoBuffFrameWrapper<T>> logger_ = null) : base(false)
         {
             pipeStreamReader = new SpecialPipeStream(65536, false);
             memoryStreamTX = new MemoryStream(8192);
+            _prefixStyle = prefixStyle;
+            logger = logger_;
         }
 
         public override void AddBytes(byte[] bytes, int length)
         {
             pipeStreamReader.Write(bytes, 0, length);
 
-            while ((message = Serializer.DeserializeWithLengthPrefix<T>(pipeStreamReader, PrefixStyle.Base128)) != null)
+            // Will log message if there is a problem with deserialization
+            try
             {
-                FireEvent(message);
+                while ((message = Serializer.DeserializeWithLengthPrefix<T>(pipeStreamReader, _prefixStyle)) != null)
+                {
+                    FireEvent(message);
+                }
+            }
+            catch (Exception e_parse)
+            {
+                logger?.LogWarning(e_parse, "Incomplete Protobuf message");
             }
         }
 
         public override byte[] Data2BytesSync(T data, out int count)
         {
             memoryStreamTX.Seek(0, SeekOrigin.Begin);
-            Serializer.SerializeWithLengthPrefix(memoryStreamTX, data, PrefixStyle.Base128);
+            Serializer.SerializeWithLengthPrefix(memoryStreamTX, data, _prefixStyle);
             count = (int)memoryStreamTX.Position;
 
             return memoryStreamTX.GetBuffer();

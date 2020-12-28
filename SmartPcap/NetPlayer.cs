@@ -1,6 +1,7 @@
 ﻿using CommsLIB.Base;
 using CommsLIB.Communications;
 using CommsLIB.SmartPcap.Base;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
@@ -22,7 +23,7 @@ namespace CommsLIB.SmartPcap
         }
 
         #region logger
-        private static NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
+        private readonly ILogger<NetPlayer> logger = null;
         #endregion
 
         public delegate void DataRateDelegate(Dictionary<string, float> dataRates);
@@ -75,9 +76,10 @@ namespace CommsLIB.SmartPcap
         ArrayPool<byte> bytePool = ArrayPool<byte>.Shared;
 
 
-        public NetPlayer()
+        public NetPlayer(ILogger<NetPlayer> logger_ = null)
         {
             buffer = bytePool.Rent(HelperTools.SIZE_BYTES);
+            logger = logger_;
         }
 
         public static (ICollection<PlayPeerInfo>, DateTime, int, long) GetRecordingInfo(string _idxFilePath)
@@ -195,7 +197,7 @@ namespace CommsLIB.SmartPcap
                         }
                         catch(Exception e)
                         {
-                            logger.Error(e, "Error reading idx file. TimeIndexes");
+                            logger?.LogError(e, "Error reading idx file. TimeIndexes");
                         }
                     }
                     _lastTime = lastTime = time;

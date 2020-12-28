@@ -1,4 +1,5 @@
 ﻿using CommsLIB.Helper;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Net;
 using System.Net.Sockets;
@@ -8,10 +9,6 @@ namespace CommsLIB.Communications
 {
     public static class TimeOutSocketFactory
     {
-        #region logger
-        private static NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
-        #endregion
-
         public static TcpClient Connect(IPEndPoint remoteEndPoint, int timeoutMSec)
         {
             TcpClient tcpclient = new TcpClient();
@@ -57,7 +54,6 @@ namespace CommsLIB.Communications
                 }
             } catch (Exception e)
             {
-                logger.Error(e, $"Error in TimeOutSocketFactory {remoteEndPoint.Address.ToString()} - {remoteEndPoint.Port.ToString()}" );
                 // See if we have to wait a little bit
                 int wait = timeoutMSec - (TimeTools.GetCoarseMillisNow() - startTime);
                 if (wait > 10)

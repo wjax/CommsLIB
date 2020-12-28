@@ -2,6 +2,7 @@
 using CommsLIB.Communications.FrameWrappers;
 using CommsLIB.Helper;
 using CommsLIB.SmartPcap;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Net;
 using System.Net.Sockets;
@@ -14,7 +15,7 @@ namespace CommsLIB.Communications
     public class TCPNETCommunicator<T> : CommunicatorBase<T>
     {
         #region logger
-        private static NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
+        //private static NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
         #endregion
 
         #region global defines
@@ -50,14 +51,14 @@ namespace CommsLIB.Communications
         private object lockSerializer = new object();
         #endregion
 
-        public TCPNETCommunicator(FrameWrapperBase<T> _frameWrapper = null, bool circular = false) : base()
+        public TCPNETCommunicator(FrameWrapperBase<T> _frameWrapper = null, bool circular = false, ILogger<TCPNETCommunicator<T>> logger_ = null) : base(logger_)
         {
             frameWrapper = _frameWrapper != null ? _frameWrapper : null;
             tcpClientProvided = false;
             useCircular = circular;
         }
 
-        public TCPNETCommunicator(TcpClient client, FrameWrapperBase<T> _frameWrapper = null, bool circular = false) : base()
+        public TCPNETCommunicator(TcpClient client, FrameWrapperBase<T> _frameWrapper = null, bool circular = false, ILogger<TCPNETCommunicator<T>> logger_ = null) : base(logger_)
         {
             frameWrapper = _frameWrapper != null ? _frameWrapper : null;
             // Do stuff
@@ -147,7 +148,7 @@ namespace CommsLIB.Communications
             if (State == STATE.RUNNING)
                 return;
 
-            logger.Info("Start");
+            logger?.LogInformation("Start");
             exit = false;
 
             receiverTask = tcpClientProvided ? new Task(ReceiveCallback, TaskCreationOptions.LongRunning) : new Task(Connect2EquipmentCallback, TaskCreationOptions.LongRunning);
@@ -163,7 +164,7 @@ namespace CommsLIB.Communications
 
         public override async Task Stop()
         {
-            logger.Info("Stop");
+            logger?.LogInformation("Stop");
             exit = true;
 
             dataRateTimer.Dispose();
@@ -187,7 +188,7 @@ namespace CommsLIB.Communications
             if (tcpEq == null)
                 return;
 
-            logger.Info("ClientDown - " + tcpEq.ID);
+            logger?.LogInformation("ClientDown - " + tcpEq.ID);
 
             bytesAccumulatorRX = 0;
             bytesAccumulatorTX = 0;
@@ -199,7 +200,7 @@ namespace CommsLIB.Communications
             }
             catch (Exception e)
             {
-                logger.Error(e, "ClientDown Exception");
+                logger?.LogError(e, "ClientDown Exception");
             }
             finally
             {
@@ -246,7 +247,7 @@ namespace CommsLIB.Communications
                 }
                 catch (Exception e)
                 {
-                    logger.Warn(e, "Exception in messageQueue");
+                    logger?.LogWarning(e, "Exception in messageQueue");
                 }
             }
         }
@@ -269,7 +270,7 @@ namespace CommsLIB.Communications
             }
             catch (Exception e)
             {
-                logger.Error(e, "Error while sending TCPNet");
+                logger?.LogError(e, "Error while sending TCPNet");
                 // Client Down
                 ClientDown();
 
@@ -283,7 +284,7 @@ namespace CommsLIB.Communications
         {
             do
             {
-                logger.Info("Waiting for new connection");
+                logger?.LogInformation("Waiting for new connection");
                 IPEndPoint ipep = new IPEndPoint(IPAddress.Parse(tcpEq.ConnUri.IP), tcpEq.ConnUri.Port);
 
                 // Blocks here for timeout
@@ -323,7 +324,7 @@ namespace CommsLIB.Communications
                         }
                         catch (Exception e)
                         {
-                            logger.Error(e, "Error while receiving TCPNet");
+                            logger?.LogError(e, "Error while receiving TCPNet");
                         }
                         finally
                         {
@@ -339,7 +340,7 @@ namespace CommsLIB.Communications
         {
             if (tcpEq.ClientImpl != null)
             {
-                logger.Info("Receiving");
+                logger?.LogInformation("Receiving");
 
                 tcpEq.ClientImpl.SendTimeout = SEND_TIMEOUT;
                 tcpEq.ClientImpl.ReceiveTimeout = RECEIVE_TIMEOUT;
@@ -373,7 +374,7 @@ namespace CommsLIB.Communications
                 }
                 catch (Exception e)
                 {
-                    logger.Error(e, "Error while receiving TCPNet");
+                    logger?.LogError(e, "Error while receiving TCPNet");
                 }
                 finally
                 {

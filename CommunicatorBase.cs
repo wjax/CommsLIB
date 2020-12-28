@@ -1,5 +1,6 @@
 ﻿using CommsLIB.Base;
 using CommsLIB.Communications.FrameWrappers;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Threading.Tasks;
 
@@ -27,13 +28,16 @@ namespace CommsLIB.Communications
     public abstract class CommunicatorBase<T> : ICommunicator
     {
         public event DataReadyEventHandler DataReadyEvent;
-        //public delegate void DataReadyEventHandler(string ip, int port, long time, byte[] bytes, int offset, int length , string ID, ushort[] ipChunks);
-
-        //public delegate void ConnectionStateDelegate(string ID, ConnUri uri, bool connected);
         public event ConnectionStateDelegate ConnectionStateEvent;
-
-        //public delegate void DataRateDelegate(string ID, float Mbps);
         public event DataRateDelegate DataRateEvent;
+
+        public readonly ILogger<CommunicatorBase<T>> logger;
+
+        public CommunicatorBase(ILogger<CommunicatorBase<T>> logger_ = null)
+        {
+            logger = logger_;
+        }
+
 
         public enum STATE
         {

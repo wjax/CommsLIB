@@ -2,6 +2,7 @@
 using CommsLIB.Communications.FrameWrappers;
 using CommsLIB.Helper;
 using CommsLIB.SmartPcap;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Net;
 using System.Net.NetworkInformation;
@@ -15,7 +16,7 @@ namespace CommsLIB.Communications
     public class UDPNETCommunicator<T> : CommunicatorBase<T>
     {
         #region logger
-        private static NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
+        //private static NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
         #endregion
 
         #region global defines
@@ -66,7 +67,7 @@ namespace CommsLIB.Communications
         private object lockSerializer = new object();
         #endregion
 
-        public UDPNETCommunicator(FrameWrapperBase<T> _frameWrapper = null, bool circular = false) : base()
+        public UDPNETCommunicator(FrameWrapperBase<T> _frameWrapper = null, bool circular = false, ILogger<UDPNETCommunicator<T>> logger_ = null) : base(logger_)
         {
             frameWrapper = _frameWrapper != null ? _frameWrapper : null;
             remoteEPSource = (EndPoint)remoteIPEPSource;
@@ -135,7 +136,7 @@ namespace CommsLIB.Communications
             if (State == STATE.RUNNING)
                 return;
 
-            logger.Info("Start");
+            logger?.LogInformation("Start");
             exit = false;
 
             senderTask = new Task(DoSendStart, TaskCreationOptions.LongRunning);
@@ -151,7 +152,7 @@ namespace CommsLIB.Communications
 
         public override async Task Stop()
         {
-            logger.Info("Stop");
+            logger?.LogInformation("Stop");
             exit = true;
 
             dataRateTimer.Dispose();
@@ -187,7 +188,6 @@ namespace CommsLIB.Communications
             if (!udpEq.Connected)
                 return;
 
-            logger.Info("ClientDown - " + udpEq.ID);
             bytesAccumulatorRX = 0;
             bytesAccumulatorTX = 0;
 
@@ -198,7 +198,7 @@ namespace CommsLIB.Communications
             }
             catch (Exception e)
             {
-                logger.Error(e, "ClientDown Exception");
+                logger?.LogError(e, "ClientDown Exception");
             }
             finally
             {
@@ -247,10 +247,10 @@ namespace CommsLIB.Communications
                 }
                 catch (Exception e)
                 {
-                    logger.Warn(e, "Exception in messageQueue");
+                    // Shouldnt happen
+                    logger?.LogWarning(e, "Exception in messageQueue");
                 }
             }
-            Console.WriteLine("Exited sender task");
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
@@ -259,8 +259,7 @@ namespace CommsLIB.Communications
             if (o == null || o.ClientImpl == null)
                 return false;
 
-            string ID = o.ID;
-            int nSent = 0;
+            int nSent;
             UdpClient t = o.ClientImpl;
             try
             {
@@ -271,7 +270,7 @@ namespace CommsLIB.Communications
             }
             catch (Exception e)
             {
-                logger.Error(e, "Error while sending UDPNet");
+                logger?.LogError(e, "Error while sending UDPNet");
                 // Client Down
                 ClientDown();
 
@@ -285,7 +284,7 @@ namespace CommsLIB.Communications
         {
             do
             {
-                logger.Info("Waiting for new connection");
+                logger?.LogInformation("Waiting for new connection");
 
                 using (UdpClient t = new UdpClient())
                 {
@@ -359,7 +358,7 @@ namespace CommsLIB.Communications
                             }
                             catch (Exception e)
                             {
-                                logger.Error(e, "Error while receiving UDPNet");
+                                logger?.LogError(e, "Error while receiving UDPNet");
                             }
                             finally
                             {
@@ -369,14 +368,14 @@ namespace CommsLIB.Communications
                     }
                     catch (Exception eInner)
                     {
-                        logger.Error(eInner, "Error while connecting Inner");
+                        logger?.LogError(eInner, "Error while connecting Inner");
                     }
                 }
                 if (!exit) Thread.Sleep(CONNECTION_TIMEOUT);
 
             } while (!exit && udpEq.IsPersistent);
 
-            logger.Info("Exited Connect2EquipmentCallback");
+            logger?.LogInformation("Exited Connect2EquipmentCallback");
         }
 
         private void OnDataRate(object state)

@@ -7,7 +7,7 @@ namespace CommsLIB.Base
     internal sealed class CircularByteBuffer4Comms : IDisposable, ICommsQueue
     {
         #region logger
-        private static NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
+        //private static NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
         #endregion
 
         private const int SIZE = 4;

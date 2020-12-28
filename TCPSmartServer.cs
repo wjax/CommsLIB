@@ -1,5 +1,6 @@
 ﻿using CommsLIB.Communications;
 using CommsLIB.Communications.FrameWrappers;
+using Microsoft.Extensions.Logging;
 using ProtoBuf;
 using System;
 using System.Collections.Generic;
@@ -13,7 +14,7 @@ namespace CommsLIB.Communications
     public class TCPSmartServer<T , U> : IDisposable where T : FrameWrapperBase<U>, new()
     {
         #region logger
-        private static NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
+        private readonly ILogger<TCPSmartServer<T, U>> logger = null;
         #endregion
 
         #region consts
@@ -51,11 +52,12 @@ namespace CommsLIB.Communications
         private bool UseCircularBuffers = false;
         #endregion
 
-        public TCPSmartServer(int _port, string _ip = null, bool _useCircularBuffers=false)
+        public TCPSmartServer(int _port, string _ip = null, bool _useCircularBuffers=false, ILogger<TCPSmartServer<T, U>> logger_ = null)
         {
             ListeningPort = _port;
             ListeningIP = _ip;
             UseCircularBuffers = _useCircularBuffers;
+            logger = logger_;
         }
 
         public void Start()
@@ -93,7 +95,7 @@ namespace CommsLIB.Communications
 
             while (!cancelListenToken.IsCancellationRequested)
             {
-                logger.Info("Waiting for a connection... ");
+                logger?.LogInformation("Waiting for a connection... ");
 
                 // Perform a blocking call to accept requests.
                 TcpClient tcpClient = _server.AcceptTcpClient();

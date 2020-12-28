@@ -2,6 +2,7 @@
 using CommsLIB.Communications;
 using CommsLIB.Helper;
 using CommsLIB.SmartPcap.Base;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -21,7 +22,7 @@ namespace CommsLIB.SmartPcap
         }
 
         #region logger
-        private static NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
+        private readonly ILogger<NetRecorder> logger = null;
         #endregion
 
         #region const
@@ -64,10 +65,11 @@ namespace CommsLIB.SmartPcap
         private Timer eventTimer;
         #endregion
 
-        public NetRecorder()
+        public NetRecorder(ILogger<NetRecorder> logger_ = null)
         {
             idxBuffer = new byte[HelperTools.idxIndexSize];
             headerBuffer = new byte[HelperTools.headerSize];
+            logger = logger_;
         }
 
         private void OnEventTimer(object state)
