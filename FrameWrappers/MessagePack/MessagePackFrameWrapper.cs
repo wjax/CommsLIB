@@ -45,7 +45,7 @@ namespace CommsLIB.Communications.FrameWrappers.MessagePack
 
                 try
                 {
-                    while ((message = (T)MessagePackSerializer.Typeless.Deserialize(pipeStreamReader, true)) != null && !exit)
+                    while ((message = (T)MessagePackSerializer.Typeless.Deserialize(pipeStreamReader)) != null && !exit)
                     {
                         FireEvent(message);
                     }
