@@ -14,10 +14,6 @@ namespace CommsLIB.Communications
 {
     public class TCPNETCommunicator<T> : CommunicatorBase<T>
     {
-        #region logger
-        //private static NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
-        #endregion
-
         #region global defines
         private int RECEIVE_TIMEOUT = 4000;
         private const int CONNECTION_TIMEOUT = 5000;
@@ -51,14 +47,14 @@ namespace CommsLIB.Communications
         private object lockSerializer = new object();
         #endregion
 
-        public TCPNETCommunicator(FrameWrapperBase<T> _frameWrapper = null, bool circular = false, ILogger<TCPNETCommunicator<T>> logger_ = null) : base(logger_)
+        public TCPNETCommunicator(FrameWrapperBase<T> _frameWrapper = null, bool circular = false) : base()
         {
             frameWrapper = _frameWrapper != null ? _frameWrapper : null;
             tcpClientProvided = false;
             useCircular = circular;
         }
 
-        public TCPNETCommunicator(TcpClient client, FrameWrapperBase<T> _frameWrapper = null, bool circular = false, ILogger<TCPNETCommunicator<T>> logger_ = null) : base(logger_)
+        public TCPNETCommunicator(TcpClient client, FrameWrapperBase<T> _frameWrapper = null, bool circular = false) : base()
         {
             frameWrapper = _frameWrapper != null ? _frameWrapper : null;
             // Do stuff

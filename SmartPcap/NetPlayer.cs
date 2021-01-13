@@ -1,5 +1,6 @@
 ﻿using CommsLIB.Base;
 using CommsLIB.Communications;
+using CommsLIB.Logging;
 using CommsLIB.SmartPcap.Base;
 using Microsoft.Extensions.Logging;
 using System;
@@ -76,10 +77,10 @@ namespace CommsLIB.SmartPcap
         ArrayPool<byte> bytePool = ArrayPool<byte>.Shared;
 
 
-        public NetPlayer(ILogger<NetPlayer> logger_ = null)
+        public NetPlayer()
         {
             buffer = bytePool.Rent(HelperTools.SIZE_BYTES);
-            logger = logger_;
+            logger = this.GetLogger();
         }
 
         public static (ICollection<PlayPeerInfo>, DateTime, int, long) GetRecordingInfo(string _idxFilePath)

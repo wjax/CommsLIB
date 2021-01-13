@@ -1,5 +1,6 @@
 ﻿using CommsLIB.Communications;
 using CommsLIB.Communications.FrameWrappers;
+using CommsLIB.Logging;
 using Microsoft.Extensions.Logging;
 using ProtoBuf;
 using System;
@@ -52,12 +53,12 @@ namespace CommsLIB.Communications
         private bool UseCircularBuffers = false;
         #endregion
 
-        public TCPSmartServer(int _port, string _ip = null, bool _useCircularBuffers=false, ILogger<TCPSmartServer<T, U>> logger_ = null)
+        public TCPSmartServer(int _port, string _ip = null, bool _useCircularBuffers=false)
         {
             ListeningPort = _port;
             ListeningIP = _ip;
             UseCircularBuffers = _useCircularBuffers;
-            logger = logger_;
+            logger = this.GetLogger();
         }
 
         public void Start()

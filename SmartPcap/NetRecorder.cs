@@ -1,6 +1,7 @@
 ﻿using CommsLIB.Base;
 using CommsLIB.Communications;
 using CommsLIB.Helper;
+using CommsLIB.Logging;
 using CommsLIB.SmartPcap.Base;
 using Microsoft.Extensions.Logging;
 using System;
@@ -65,11 +66,11 @@ namespace CommsLIB.SmartPcap
         private Timer eventTimer;
         #endregion
 
-        public NetRecorder(ILogger<NetRecorder> logger_ = null)
+        public NetRecorder()
         {
             idxBuffer = new byte[HelperTools.idxIndexSize];
             headerBuffer = new byte[HelperTools.headerSize];
-            logger = logger_;
+            logger = this.GetLogger();
         }
 
         private void OnEventTimer(object state)

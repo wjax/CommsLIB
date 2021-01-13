@@ -1,5 +1,6 @@
 ﻿using CommsLIB.Base;
 using CommsLIB.Communications.FrameWrappers;
+using CommsLIB.Logging;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Threading.Tasks;
@@ -31,11 +32,11 @@ namespace CommsLIB.Communications
         public event ConnectionStateDelegate ConnectionStateEvent;
         public event DataRateDelegate DataRateEvent;
 
-        public readonly ILogger<CommunicatorBase<T>> logger;
+        protected readonly ILogger<CommunicatorBase<T>> logger;
 
-        public CommunicatorBase(ILogger<CommunicatorBase<T>> logger_ = null)
+        public CommunicatorBase()
         {
-            logger = logger_;
+            logger = this.GetLogger();
         }
 
 

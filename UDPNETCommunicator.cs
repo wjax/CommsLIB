@@ -15,10 +15,6 @@ namespace CommsLIB.Communications
 {
     public class UDPNETCommunicator<T> : CommunicatorBase<T>
     {
-        #region logger
-        //private static NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
-        #endregion
-
         #region global defines
         private int RECEIVE_TIMEOUT = 4000;
         private const int CONNECTION_TIMEOUT = 5000;
@@ -67,7 +63,7 @@ namespace CommsLIB.Communications
         private object lockSerializer = new object();
         #endregion
 
-        public UDPNETCommunicator(FrameWrapperBase<T> _frameWrapper = null, bool circular = false, ILogger<UDPNETCommunicator<T>> logger_ = null) : base(logger_)
+        public UDPNETCommunicator(FrameWrapperBase<T> _frameWrapper = null, bool circular = false) : base()
         {
             frameWrapper = _frameWrapper != null ? _frameWrapper : null;
             remoteEPSource = (EndPoint)remoteIPEPSource;

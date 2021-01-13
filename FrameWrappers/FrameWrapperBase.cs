@@ -1,4 +1,6 @@
 ﻿using CommsLIB.Base;
+using CommsLIB.Logging;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Threading.Tasks;
 
@@ -6,6 +8,10 @@ namespace CommsLIB.Communications.FrameWrappers
 {
     public abstract class FrameWrapperBase<T>
     {
+        #region logger
+        protected readonly ILogger<FrameWrapperBase<T>> logger = null;
+        #endregion
+
         // Delegate and event
         public delegate void FrameAvailableDelegate(string ID, T payload);
         public event FrameAvailableDelegate FrameAvailableEvent;
@@ -19,6 +25,7 @@ namespace CommsLIB.Communications.FrameWrappers
 
         public FrameWrapperBase(bool _useThreadPool4Event)
         {
+            logger = this.GetLogger();
             if (_useThreadPool4Event)
             {
                 fireQueue = new BlockingQueue<T>();

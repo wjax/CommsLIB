@@ -16,16 +16,11 @@ namespace CommsLIB.Communications.FrameWrappers.ProtoBuf
         private PrefixStyle _prefixStyle = PrefixStyle.Base128;
         T message;
 
-        #region logger
-        private readonly ILogger<ProtoBuffFrameWrapper<T>> logger = null;
-        #endregion
-
-        public ProtoBuffFrameWrapper(PrefixStyle prefixStyle = PrefixStyle.Base128, ILogger<ProtoBuffFrameWrapper<T>> logger_ = null) : base(false)
+        public ProtoBuffFrameWrapper(PrefixStyle prefixStyle = PrefixStyle.Base128) : base(false)
         {
             pipeStreamReader = new SpecialPipeStream(65536, false);
             memoryStreamTX = new MemoryStream(8192);
             _prefixStyle = prefixStyle;
-            logger = logger_;
         }
 
         public override void AddBytes(byte[] bytes, int length)
