@@ -16,6 +16,10 @@ namespace CommsLIB.Communications.FrameWrappers.ProtoBuf
         private PrefixStyle _prefixStyle = PrefixStyle.Base128;
         T message;
 
+        public ProtoBuffFrameWrapper() : this(PrefixStyle.Base128)
+        {
+        }
+
         public ProtoBuffFrameWrapper(PrefixStyle prefixStyle = PrefixStyle.Base128) : base(false)
         {
             pipeStreamReader = new SpecialPipeStream(65536, false);
