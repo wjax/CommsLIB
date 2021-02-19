@@ -8,6 +8,7 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -296,7 +297,8 @@ namespace CommsLIB.Communications
                         if (IsMulticast(udpEq.ConnUri.IP, out IPAddress adr))
                             JoinMulticastOnSteroids(t.Client, udpEq.ConnUri.IP);
 
-                        t.Client.IOControl(SIO_UDP_CONNRESET, byteTrue, null);
+                        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                            t.Client.IOControl(SIO_UDP_CONNRESET, byteTrue, null);
 
                         if (t != null)
                         {
