@@ -50,6 +50,7 @@ namespace CommsLIB.Communications
         public ConnUri CommsUri { get; protected set; }
         public ushort[] IpChunks { get; protected set; } = new ushort[4];
         public string ID { get; set; }
+        public bool WaitForAnswer { get; set; }
 
         public abstract void Init(ConnUri uri, bool persistent, string ID, int inactivityMS, int sendGAP = 0);
         public abstract void Start();

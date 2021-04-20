@@ -45,18 +45,23 @@ namespace CommsLIB.Communications
         private int bytesAccumulatorTX = 0;
 
         private object lockSerializer = new object();
+        private ManualResetEventSlim sendAllowEvent;
         #endregion
 
         public TCPNETCommunicator(FrameWrapperBase<T> _frameWrapper = null, bool circular = false) : base()
         {
-            frameWrapper = _frameWrapper != null ? _frameWrapper : null;
+            frameWrapper = _frameWrapper;
             tcpClientProvided = false;
             useCircular = circular;
+            WaitForAnswer = false;
+
+            if (frameWrapper is not null)
+                frameWrapper.FrameAvailableEvent += FrameWrapper_FrameAvailableEvent;
         }
 
         public TCPNETCommunicator(TcpClient client, FrameWrapperBase<T> _frameWrapper = null, bool circular = false) : base()
         {
-            frameWrapper = _frameWrapper != null ? _frameWrapper : null;
+            frameWrapper = _frameWrapper;
             // Do stuff
             tcpClientProvided = true;
             var IP = (client.Client.RemoteEndPoint as IPEndPoint).Address.ToString();
@@ -66,6 +71,16 @@ namespace CommsLIB.Communications
             tcpEq = new CommEquipmentObject<TcpClient>("", CommsUri, client, false);
 
             useCircular = circular;
+            WaitForAnswer = false;
+
+            if (frameWrapper is not null)
+                frameWrapper.FrameAvailableEvent += FrameWrapper_FrameAvailableEvent;
+        }
+
+        private void FrameWrapper_FrameAvailableEvent(string ID, T payload)
+        {
+            if (WaitForAnswer)
+                sendAllowEvent?.Set();
         }
 
         #region CommunicatorBase
@@ -165,6 +180,9 @@ namespace CommsLIB.Communications
 
             dataRateTimer.Dispose();
 
+            if (WaitForAnswer)
+                sendAllowEvent?.Dispose();
+
             messageQueu.Reset();
             tcpEq.ClientImpl?.Close();
 
@@ -183,6 +201,12 @@ namespace CommsLIB.Communications
         {
             if (tcpEq == null)
                 return;
+
+            if (WaitForAnswer)
+            {
+                sendAllowEvent?.Dispose();
+                sendAllowEvent = null;
+            }
 
             logger?.LogInformation("ClientDown - " + tcpEq.ID);
 
@@ -214,6 +238,13 @@ namespace CommsLIB.Communications
             bytesAccumulatorRX = 0;
             bytesAccumulatorTX = 0;
 
+            if (WaitForAnswer)
+            {
+                sendAllowEvent = new ManualResetEventSlim();
+                sendAllowEvent.Set();
+            }
+
+
             // Launch Event
             FireConnectionEvent(tcpEq.ID, tcpEq.ConnUri, true);
         }
@@ -230,14 +261,25 @@ namespace CommsLIB.Communications
                 {
                     int read = messageQueu.Take(ref txBuffer, 0);
 
-                    long now = TimeTools.GetCoarseMillisNow();
-                    if (now - LastTX < MINIMUM_SEND_GAP)
+                    if (WaitForAnswer)
                     {
-                        toWait = MINIMUM_SEND_GAP - (now - LastTX);
-                        Thread.Sleep((int)toWait);
+                        sendAllowEvent?.Wait();
+                        Thread.Sleep(MINIMUM_SEND_GAP);
+                    }
+                    else
+                    {
+                        long now = TimeTools.GetCoarseMillisNow();
+                        if (now - LastTX < MINIMUM_SEND_GAP)
+                        {
+                            toWait = MINIMUM_SEND_GAP - (now - LastTX);
+                            Thread.Sleep((int)toWait);
+                        }
                     }
 
                     Send2Equipment(txBuffer, 0, read, tcpEq);
+                    
+                    if (WaitForAnswer)
+                        sendAllowEvent?.Reset();
 
                     LastTX = TimeTools.GetCoarseMillisNow();
                 }
@@ -402,6 +444,9 @@ namespace CommsLIB.Communications
                     (messageQueu as IDisposable).Dispose();
                     tcpEq.ClientImpl?.Dispose();
                     dataRateTimer?.Dispose();
+
+                    if (frameWrapper is not null)
+                        frameWrapper.FrameAvailableEvent -= FrameWrapper_FrameAvailableEvent;
                 }
 
                 messageQueu = null;

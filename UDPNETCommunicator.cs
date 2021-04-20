@@ -66,7 +66,7 @@ namespace CommsLIB.Communications
 
         public UDPNETCommunicator(FrameWrapperBase<T> _frameWrapper = null, bool circular = false) : base()
         {
-            frameWrapper = _frameWrapper != null ? _frameWrapper : null;
+            frameWrapper = _frameWrapper;
             remoteEPSource = (EndPoint)remoteIPEPSource;
             useCircular = circular;
         }
