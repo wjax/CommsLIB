@@ -51,13 +51,15 @@ namespace CommsLIB.Communications
 
         #region fields
         private bool UseCircularBuffers = false;
+        private Func<T> instantiateFrameWrapperFunc;
         #endregion
 
-        public TCPSmartServer(int _port, string _ip = null, bool _useCircularBuffers=false)
+        public TCPSmartServer(int _port, string _ip = null, bool _useCircularBuffers=false, Func<T> _instantiateFrameWrapperFunc = null)
         {
             ListeningPort = _port;
             ListeningIP = _ip;
             UseCircularBuffers = _useCircularBuffers;
+            instantiateFrameWrapperFunc = _instantiateFrameWrapperFunc;
             logger = this.GetLogger();
         }
 
@@ -103,7 +105,7 @@ namespace CommsLIB.Communications
                 // Get ID
                 string id = GetIDFromSocket(tcpClient.Client);
                 // Create Framewrapper
-                var framewrapper = new T();
+                var framewrapper = instantiateFrameWrapperFunc != null ? instantiateFrameWrapperFunc() : new T();
                 // Create TCPNetCommunicator
                 CommunicatorBase<U> communicator = new TCPNETCommunicator<U>(tcpClient, framewrapper, UseCircularBuffers);
 
