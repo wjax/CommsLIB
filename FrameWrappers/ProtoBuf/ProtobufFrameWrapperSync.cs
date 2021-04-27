@@ -16,6 +16,9 @@ namespace CommsLIB.Communications.FrameWrappers.ProtoBuf
         private PrefixStyle _prefixStyle = PrefixStyle.Base128;
         T message;
 
+        private int nDataLength = 0;
+        private int nBytesRcv = 0;
+
         public ProtoBuffFrameWrapper() : this(PrefixStyle.Base128)
         {
         }
@@ -29,19 +32,40 @@ namespace CommsLIB.Communications.FrameWrappers.ProtoBuf
 
         public override void AddBytes(byte[] bytes, int length)
         {
-            pipeStreamReader.Write(bytes, 0, length);
-
-            // Will log message if there is a problem with deserialization
-            try
+            if (_prefixStyle == PrefixStyle.Fixed32)
             {
-                while ((message = Serializer.DeserializeWithLengthPrefix<T>(pipeStreamReader, _prefixStyle)) != null)
+                for (int i = 0; i < length; i++)
                 {
-                    FireEvent(message);
+                    if (nBytesRcv < 4)
+                        nDataLength |= (bytes[i] << (8 * nBytesRcv++));
+                    else
+                    {
+                        pipeStreamReader.WriteByte(bytes[i]);
+                        if (--nDataLength == 0)
+                        {
+                            message = Serializer.Deserialize<T>(pipeStreamReader);
+                            FireEvent(message);
+                            nBytesRcv = nDataLength = 0;
+                        }
+                    }
                 }
             }
-            catch (Exception e_parse)
+            else
             {
-                logger?.LogWarning(e_parse, "Incomplete Protobuf message");
+                pipeStreamReader.Write(bytes, 0, length);
+
+                // Will log message if there is a problem with deserialization
+                try
+                {
+                    while ((message = Serializer.DeserializeWithLengthPrefix<T>(pipeStreamReader, _prefixStyle)) != null)
+                    {
+                        FireEvent(message);
+                    }
+                }
+                catch (Exception e_parse)
+                {
+                    logger?.LogWarning(e_parse, "Incomplete Protobuf message");
+                }
             }
         }
 
