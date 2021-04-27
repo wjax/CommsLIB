@@ -276,9 +276,9 @@ namespace CommsLIB.Communications
                         }
                     }
 
-                    Send2Equipment(txBuffer, 0, read, tcpEq);
+                    var sentOK = Send2Equipment(txBuffer, 0, read, tcpEq);
                     
-                    if (WaitForAnswer)
+                    if (WaitForAnswer && sentOK)
                         sendAllowEvent?.Reset();
 
                     LastTX = TimeTools.GetCoarseMillisNow();
