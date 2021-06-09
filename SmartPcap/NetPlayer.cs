@@ -403,6 +403,9 @@ namespace CommsLIB.SmartPcap
             if (CurrentState != State.Stoped)
                 return false;
 
+            if (_dstIP is null || _dstPort <= 0 || _dstPort > 65535)
+                return false;
+
             int hashedID = HelperTools.GetDeterministicHashCode(_ID);
             if (udpSenders.TryGetValue(hashedID, out PlayPeerInfo p))
             {
