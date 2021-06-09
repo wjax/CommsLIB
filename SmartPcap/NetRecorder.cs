@@ -104,7 +104,8 @@ namespace CommsLIB.SmartPcap
                     DumpFileExtension = dumpFileExtension,
                     commsLink = u,
                     IP = ip,
-                    Port= port
+                    Port= port,
+                    External = false
                 };
 
                 udpListeners.Add(ID, p);
@@ -122,10 +123,14 @@ namespace CommsLIB.SmartPcap
             {
                 u.commsLink.DataReadyEvent -= DataReadyEventCallback;
                 u.commsLink.DataRateEvent -= OnDataRate;
+
+                _dataRate.Remove(id);
+                udpListeners.Remove(id);
+
+                return true;
             }
 
-            _dataRate.Remove(id);
-            return udpListeners.Remove(id);
+            return false;
         }
 
         public void AddPeer(ICommunicator commLink, bool dumpToFile, string dumpFileExtension = ".dump")
@@ -142,7 +147,8 @@ namespace CommsLIB.SmartPcap
                     DumpFileExtension = dumpFileExtension,
                     commsLink = commLink,
                     IP = commLink.CommsUri.IP,
-                    Port = commLink.CommsUri.LocalPort
+                    Port = commLink.CommsUri.LocalPort,
+                    External = true
                 };
 
                 udpListeners.Add(commLink.ID, p);
@@ -152,6 +158,9 @@ namespace CommsLIB.SmartPcap
 
         public void RemovePeer(ICommunicator commLink)
         {
+            if (commLink is null)
+                return;
+
             try
             {
                 commLink.DataReadyEvent -= DataReadyEventCallback;
@@ -292,7 +301,8 @@ namespace CommsLIB.SmartPcap
         {
             List<Task> tasks = new List<Task>();
             foreach (var u in udpListeners.Values)
-                tasks.Add(u.commsLink.Stop());
+                if (!u.External)
+                    tasks.Add(u.commsLink.Stop());
 
             await Task.WhenAll(tasks);
 

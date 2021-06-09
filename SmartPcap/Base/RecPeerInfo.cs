@@ -18,5 +18,7 @@ namespace CommsLIB.SmartPcap.Base
 
         public ICommunicator commsLink;
         public FileStream file;
+
+        public bool External;
     }
 }
